@@ -7,8 +7,9 @@ import random
 import time
 from collections import namedtuple
 import json
+import bitcoin
 
-Tx = namedtuple("Tx", "Txins Txouts witnessData locktime is_valid hash")
+Tx = namedtuple("Tx", "Txins Txouts witnessData locktime is_valid hash is_spent")
 Txin = namedtuple("Txin", "hash index sig sequence")
 Txout = namedtuple("Txout", "value pk_script")
 
@@ -220,8 +221,8 @@ def parse_getblocksheaders_msg(payload):
 
 
 def parse_outpoint_msg(payload):
-    hasho = struct.unpack("<p", payload[:32])
-    index = struct.unpack("<L", payload[32:36])
+    hasho = struct.unpack("<32s", payload[:32])[0]
+    index = struct.unpack("<L", payload[32:36])[0]
     return hasho, index
 
 
@@ -276,13 +277,14 @@ def parse_tx_msg(payload):
     wd, wd_offset = parse_witnessdata_msg(payload[total_offset:])
     total_offset += wd_offset
     lock_time = struct.unpack("<L", payload[:-4])
-    return version_tx, txin, txout, lock_time, total_offset+4
+    hsh = hashlib.sha256(hashlib.sha256(payload))
+    return version_tx, txin, txout, lock_time, hsh, total_offset+4
 
 
 def parse_block_msg(payload):
     version_blk = struct.unpack("<L", payload[:4])[0]
-    prev_block = struct.unpack("<p", payload[4:36])[0]
-    merkle_root = struct.unpack("<p", payload[36:68])[0]
+    prev_block = struct.unpack("<32s", payload[4:36])[0]
+    merkle_root = struct.unpack("<32s", payload[36:68])[0]
     timestamp = struct.unpack("<L", payload[68:72])[0]
     bits = struct.unpack("<L", payload[72:76])[0]
     nonce = struct.unpack("<L", payload[76:80])[0]
@@ -290,8 +292,8 @@ def parse_block_msg(payload):
     tx: List[tuple] = []
     for i in range(tx_count):
         a_tx = parse_tx_msg(payload[80+total_offset:])
-        tx.append(a_tx[:4])
-        total_offset += a_tx[4]
+        tx.append(a_tx[:5])
+        total_offset += a_tx[5]
     return version_blk, prev_block, merkle_root, timestamp, bits, nonce, tx
 
 
@@ -358,26 +360,27 @@ def create_getdata_msg(inv_vecs):  # gets an array of inv_vec [[typ1,hsh1], ....
 
 
 def create_command(command):
-    output = struct.pack("<p", command)
+    order = "<" + str(len(command)) + "s"
+    output = struct.pack(order, command)
     while len(output) < 12:
         output += struct.pack("x")
     return output
 
 
 def create_msg(payload, command):
-    return struct.pack("<L", my_magic_val) + create_command(command) + struct.pack("<L", len(payload)/8) + struct.pack("<L", hashlib.sha256(hashlib.sha256(payload[:32]))) + payload
+    return struct.pack("<L", my_magic_val) + create_command(command) + struct.pack("<L", len(payload)) + struct.pack("<32s", hashlib.sha256(hashlib.sha256(payload[:32]))) + payload
 
 
 def create_getblocks(agreed_version, block_locator_hashes, hash_stop):
     output = struct.pack("<L", agreed_version) + create_var_int(block_locator_hashes)
     for i in range(len(block_locator_hashes)):
-        output += struct.pack("<p", block_locator_hashes[i])
-    output += struct.pack("<p", hash_stop)
+        output += struct.pack("<32s", block_locator_hashes[i])
+    output += struct.pack("<32s", hash_stop)
     return output
 
 
 def create_reject_msg(typ, ccode, ccode_str, hsh_rjct_obj):
-    return create_var_str(typ) + struct.pack("B", ccode) + create_var_str(ccode_str) + struct.pack("<p", hsh_rjct_obj)
+    return create_var_str(typ) + struct.pack("B", ccode) + create_var_str(ccode_str) + struct.pack("<32s", hsh_rjct_obj)
 
 # ------------------------------------------------------msg_create---------------------------------------------------- #
 # -----------------------------------------------------msg_validate--------------------------------------------------- #
@@ -395,8 +398,33 @@ def validate_msg(msg_tuple):
     return True
 
 
-def validate_tx(tx_tuple):
+def validate_tx(tx_tuple):  # not coinbase txs, create seperate func for them. validation require whole block
+    sum_output = 0
+    for i in tx_tuple[2]:
+        sum_output += i[0]
+
+    sum_input = 0
+    for i in tx_tuple[1]:
+        itx = search_tx_by_hash(i[0][0])
+        if itx is None:
+            return False
+        if not itx.is_valid:
+            return False
+        if itx.is_spent:
+            return False
+        if not bitcoin.ecdsa_verify(itx.hash, i[1], itx.Txouts[i[0][1]].pk_script):
+            return False
+        sum_input += itx.Txouts[i[0][1]][0]
+        itx.is_spent = True
+
+    if sum_input < sum_output:
+        return False
+    return True
+
+
+def validate_block(blk_tuple):
     pass
+
 
 # -----------------------------------------------------msg_validate--------------------------------------------------- #
 # -----------------------------------------------------file_handle---------------------------------------------------- #
@@ -484,7 +512,11 @@ def transsactions_handle_read():
 
 
 def search_tx_by_hash(hsh):
-    pass
+    txs = transsactions_handle_read()
+    for i in txs:
+        if i.hash == hsh:
+            return i
+    return None
 
 
 def search_block_by_hash(hsh):
@@ -493,9 +525,9 @@ def search_block_by_hash(hsh):
 # -----------------------------------------------------random_shit---------------------------------------------------- #
 
 if __name__ == '__main__':
-    x = struct.pack("L", 1)
-    y = struct.pack("L", 2)
-    print(0xFFFFFFFF)
+    x = struct.pack("<8s", "joe mama".encode())
+    y = struct.unpack("<8s", x)
+    print("joe mama".encode())
+    print(x)
     print(y)
-    print(x+y)
 
