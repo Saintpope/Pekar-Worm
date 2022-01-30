@@ -15,7 +15,7 @@ Txout = namedtuple("Txout", "value pk_script is_spent")
 
 Block = namedtuple("Block", "version prev_block_hash merkle_root timestamp bits nonce Txs hash")
 
-Adrr = namedtuple("Addr", "services ipv6 port")
+Addr = namedtuple("Addr", "services ipv6 port")
 
 blockchain_path = ""
 is_blockchain_used = False
@@ -320,11 +320,11 @@ def create_net_addr(is_for_version, serv, ipvsix, porto):
     return struct.pack('<LQpH', time.time(), serv, ipvsix, porto)
 
 
-def create_version_msg(serv, ipvsix, porto, needed_version, nonce, start_height):
+def create_version_msg(serv, ipvsix, porto, needed_version, user_agent, start_height):
     if needed_version < 106:
         return struct.pack("<LQQ", my_version, services, time.time()) + create_net_addr(True, serv, ipvsix, porto)
     if needed_version >= 106:
-        return struct.pack("<LQQ", my_version, services, time.time()) + create_net_addr(True, serv, ipvsix, porto) + create_net_addr(True, services, my_ipv6, my_port[1]) + struct.pack("<Q", random.randint(0, 42069)) + create_var_str(nonce) + struct.pack("<L", start_height)
+        return struct.pack("<LQQ", my_version, services, time.time()) + create_net_addr(True, serv, ipvsix, porto) + create_net_addr(True, services, my_ipv6, my_port[1]) + struct.pack("<Q", random.randint(0, 42069)) + create_var_str(user_agent) + struct.pack("<L", start_height)
     if needed_version >= 70001:
         return struct.pack("<LQQ", my_version, services, time.time()) + create_net_addr(True, serv, ipvsix,
                                                                                         porto) + create_net_addr(True,
@@ -332,7 +332,7 @@ def create_version_msg(serv, ipvsix, porto, needed_version, nonce, start_height)
                                                                                                               my_ipv6,
                                                                                                               my_port[
                                                                                                                   1]) + struct.pack(
-            "<Q", random.randint(0, 42069)) + create_var_str(nonce) + struct.pack("<L?", start_height, False)
+            "<Q", random.randint(0, 42069)) + create_var_str(user_agent) + struct.pack("<L?", start_height, False)
 
 
 def create_var_int(info):  # info can be an array or string
@@ -460,16 +460,13 @@ def validate_block(blk_tuple):
 # -----------------------------------------------------file_handle---------------------------------------------------- #
 
 
-def blockchain_handle_write(info):
+def blockchain_handle_write(info):  # info = Block object arr
     global is_blockchain_used
     while not is_blockchain_used:
         time.sleep(0.01)
     is_blockchain_used = True
-    f = open(blockchain_path, 'r')
-    f_txt = f.read() + json.dumps(info)
-    f.close()
     f = open(blockchain_path, 'w')
-    f.write(f_txt)
+    f.write(json.dumps(info))
     f.close()
     is_blockchain_used = False
 
@@ -486,16 +483,13 @@ def blockchain_handle_read():
     return f_txt
 
 
-def addresses_handle_write(info):
+def addresses_handle_write(info):  # info = address object arr
     global is_addresses_used
     while not is_addresses_used:
         time.sleep(0.01)
     is_addresses_used = True
-    f = open(addresses_path, 'r')
-    f_txt = f.read() + json.dumps(info)
-    f.close()
     f = open(addresses_path, 'w')
-    f.write(f_txt)
+    f.write(json.dumps(info))
     f.close()
     is_addresses_used = False
 
@@ -573,6 +567,36 @@ def calc_merkle_root(hsh_arr):
 
 def create_struct_ord(length):
     return "<" + str(length) + "s"
+
+
+def version_handshake(s, ipvsix, porto):
+    try:
+        s.sendall(create_msg(create_version_msg(services, ipvsix, porto, my_version, "", 0), "version"))
+    except Exception as e:
+        print(e)
+        return -1
+    msg_tuple = parse_msg(s)
+    if len(msg_tuple) == 0:
+        return 0
+    if (not validate_msg(msg_tuple)) or msg_tuple[1] != "version":
+        return 0
+    try:
+        version_tuple = parse_version_msg(msg_tuple[4])
+    except Exception as e:
+        print(e)
+        return 0
+    pref_version = min(my_version, version_tuple[0])
+    verac_tuple = parse_msg(s)
+    if len(verac_tuple) == 0:
+        return 0
+    if (not validate_msg(verac_tuple)) or verac_tuple[1] != "verack":
+        return 0
+    try:
+        s.sendall(create_msg(struct.pack("x"), "verack"))
+    except Exception as e:
+        print(e)
+        return -2
+    return pref_version
 
 # -----------------------------------------------------random_shit---------------------------------------------------- #
 
