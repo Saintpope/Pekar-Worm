@@ -9,9 +9,9 @@ from collections import namedtuple
 import json
 import bitcoin
 
-Tx = namedtuple("Tx", "Txins Txouts witnessData locktime is_valid hash is_spent")
+Tx = namedtuple("Tx", "Txins Txouts witnessData locktime is_valid hash")
 Txin = namedtuple("Txin", "hash index sig sequence")
-Txout = namedtuple("Txout", "value pk_script")
+Txout = namedtuple("Txout", "value pk_script is_spent")
 
 Block = namedtuple("Block", "version prev_block_hash merkle_root timestamp bits nonce Txs hash")
 
@@ -32,6 +32,7 @@ net = "testnet"
 my_version = 70001
 services = 1
 my_ipv6 = 0
+mining_reward = 6.25
 
 magic_val = {"main": 0xD9B4BEF9, "testnet": 0xDAB5BFFA, "signet": 0x40CF030A, "namecoin": 0xFEB4BEF9}
 my_magic_val = 0xDAB5BFFA
@@ -127,9 +128,9 @@ def parse_msg(soc):
     try:
         msg = soc.recv(24)
         magic_num = struct.unpack("<L", msg[:4])[0]
-        command = struct.unpack("<p", msg[4:16])[0]
+        command = struct.unpack("<12s", msg[4:16])[0]
         length = struct.unpack("<L", msg[16:20])[0]
-        checksum = struct.unpack("<p", msg[20:24])[0]
+        checksum = struct.unpack("<4s", msg[20:24])[0]
         payload_bytes = soc.recv(length)
         return magic_num, command, length, checksum, payload_bytes
     except Exception as e:
@@ -142,7 +143,7 @@ def parse_net_addr(payload, is_version, version_net):  # payload is sequence of 
     if (not is_version) and version_net >= 31402:
         time_net = struct.unpack("<L", payload[:4])[0]
     services_net = struct.unpack("<Q", payload[4:12])[0]
-    ipaddr = struct.unpack(">p", payload[12:28])[0]
+    ipaddr = struct.unpack(">16s", payload[12:28])[0]
     port = struct.unpack(">H", payload[28:30])[0]
     return time_net, services_net, ipaddr, port
 
@@ -160,7 +161,7 @@ def parse_var_len_int(payload):  # return length of field
 
 def parse_var_len_str(payload):
     length, length_of_len = parse_var_len_int(payload)
-    return struct.unpack("<p", payload[length_of_len:length+length_of_len]), length+length_of_len
+    return struct.unpack(create_struct_ord(length), payload[length_of_len:length+length_of_len])[0], length+length_of_len
 
 
 def parse_version_msg(payload):  # payload is sequence of bytes
@@ -196,7 +197,7 @@ def parse_addr_msg(payload):
 
 def parse_inventory_vector(payload):
     typ = struct.unpack("<L", payload[:4])
-    hsh = struct.unpack("<p", payload[4:36])
+    hsh = struct.unpack("<32s", payload[4:36])
     return typ, hsh
 
 
@@ -210,14 +211,14 @@ def parse_inv_getdata_notfound_msg(payload):
     return inv_lst
 
 
-def parse_getblocksheaders_msg(payload):
-    version_getblk = struct.unpack("<L", payload[:4])[0]
-    length, length_of_len = parse_var_len_int(payload[4:])
-    block_locator_hashes = []
-    for i in range(length):
-        block_locator_hashes.append(struct.unpack("<p", payload[4+length_of_len+i*32:4+length_of_len+(i+1)*32])[0])
-    hash_stop = struct.unpack("<p", payload[4+length_of_len+length*32:36+length_of_len+length*32])[0]
-    return version_getblk, block_locator_hashes, hash_stop
+# def parse_getblocksheaders_msg(payload): for now, no need to parse that kind of msg
+#     version_getblk = struct.unpack("<L", payload[:4])[0]
+#     length, length_of_len = parse_var_len_int(payload[4:])
+#     block_locator_hashes = []
+#     for i in range(length):
+#         block_locator_hashes.append(struct.unpack("<p", payload[4+length_of_len+i*32:4+length_of_len+(i+1)*32])[0])
+#     hash_stop = struct.unpack("<p", payload[4+length_of_len+length*32:36+length_of_len+length*32])[0]
+#     return version_getblk, block_locator_hashes, hash_stop
 
 
 def parse_outpoint_msg(payload):
@@ -229,7 +230,7 @@ def parse_outpoint_msg(payload):
 def parse_txin_msg(payload):
     previous_output = parse_outpoint_msg(payload[:36])[0]
     script_len, script_len_offset = parse_var_len_int(payload[36:])
-    sig = struct.unpack("<p", payload[36+script_len_offset:36+script_len+script_len_offset])[0]
+    sig = struct.unpack(create_struct_ord(script_len), payload[36+script_len_offset:36+script_len+script_len_offset])[0]
     sequence = struct.unpack("<L", payload[36+script_len+script_len_offset:40+script_len+script_len_offset])[0]
     return previous_output, sig, sequence, 40+script_len+script_len_offset
 
@@ -237,7 +238,7 @@ def parse_txin_msg(payload):
 def parse_txout_msg(payload):
     value = struct.unpack("<Q", payload[:8])[0]
     pk_script_len, pk_script_len_offset = parse_var_len_int(payload[8:])
-    pk_script = struct.unpack("<p", payload[8+pk_script_len_offset:8+pk_script_len_offset+pk_script_len])[0]
+    pk_script = struct.unpack(create_struct_ord(pk_script_len), payload[8+pk_script_len_offset:8+pk_script_len_offset+pk_script_len])[0]
     return value, pk_script, 8+pk_script_len_offset+pk_script_len
 
 
@@ -249,7 +250,7 @@ def parse_witnessdata_msg(payload):
     for i in range(wd_len):
         wd_len_temp, wd_len_offset_temp = parse_var_len_int(payload[total_offset:])
         total_offset += wd_len_offset_temp
-        wd.append(struct.unpack("<p", payload[total_offset:total_offset+wd_len_temp])[0])
+        wd.append(struct.unpack(create_struct_ord(wd_len_temp), payload[total_offset:total_offset+wd_len_temp])[0])
         total_offset += wd_len_temp
     return wd, total_offset
 
@@ -294,17 +295,18 @@ def parse_block_msg(payload):
         a_tx = parse_tx_msg(payload[80+total_offset:])
         tx.append(a_tx[:5])
         total_offset += a_tx[5]
-    return version_blk, prev_block, merkle_root, timestamp, bits, nonce, tx
+    hsh = hashlib.sha256(hashlib.sha256(payload[:80]))
+    return version_blk, prev_block, merkle_root, timestamp, bits, nonce, hsh, tx
 
 
 def parse_reject_msg(payload):
     total_offset = 0
     msg_typ, total_offset = parse_var_len_str(payload)
-    ccode = struct.unpack("B", payload[total_offset:total_offset+1])
+    ccode = struct.unpack("B", payload[total_offset:total_offset+1])[0]
     total_offset += 1
     reason, temp_offset = parse_var_len_str(payload[total_offset:])
     total_offset += temp_offset
-    hsh = struct.unpack("<p", payload[total_offset:])
+    hsh = struct.unpack("<32s", payload[total_offset:])[0]
     return msg_typ, ccode, reason, hsh
 
 
@@ -345,11 +347,11 @@ def create_var_int(info):  # info can be an array or string
 
 
 def create_var_str(stri):
-    return create_var_int(stri) + struct.pack("<p", stri)
+    return create_var_int(stri) + struct.pack(create_struct_ord(len(stri)), stri)
 
 
 def create_inventory_vector(typ, hsh):
-    return struct.pack("<L", typ) + struct.pack("<p", hsh)
+    return struct.pack("<L", typ) + struct.pack("<32s", hsh)
 
 
 def create_getdata_msg(inv_vecs):  # gets an array of inv_vec [[typ1,hsh1], .....]
@@ -404,26 +406,54 @@ def validate_tx(tx_tuple):  # not coinbase txs, create seperate func for them. v
         sum_output += i[0]
 
     sum_input = 0
+    spent_tx = []
     for i in tx_tuple[1]:
         itx = search_tx_by_hash(i[0][0])
         if itx is None:
             return False
         if not itx.is_valid:
             return False
-        if itx.is_spent:
+        if itx.Txouts[i[0][0][1]].is_spent:
             return False
         if not bitcoin.ecdsa_verify(itx.hash, i[1], itx.Txouts[i[0][1]].pk_script):
             return False
         sum_input += itx.Txouts[i[0][1]][0]
-        itx.is_spent = True
+        spent_tx.append((itx, i[0][1]))
 
     if sum_input < sum_output:
         return False
+
+    # for i in spent_tx: put in block generator
+    #     i[0].Txouts[i[1]].is_spent = True
+    #     transsactions_handle_update(i[0])
     return True
 
 
 def validate_block(blk_tuple):
-    pass
+    hsh_arr = [blk_tuple[7][0][4]]
+    fee_sum = 0
+    for i in range(len(blk_tuple[7])-1):  # validate all txs in block
+        if not validate_tx(blk_tuple[7][i+1]):
+            return False
+        hsh_arr.append(blk_tuple[7][i+1][4])
+        txin_sum = 0
+        for j in blk_tuple[7][1]:
+            itx = search_tx_by_hash(j[0][0])
+            txin_sum += itx.Txouts[j[0][1]][0]
+        txout_sum = 0
+        for j in blk_tuple[7][2]:
+            txout_sum += j[0]
+        fee_sum += txin_sum - txout_sum
+
+    if blk_tuple[7][0][2][0] != fee_sum + mining_reward:
+        return False
+
+    if blk_tuple[2] != calc_merkle_root(hsh_arr):
+        return False
+
+    if int(blk_tuple[6]) > blk_tuple[4]:
+        return False
+    return True
 
 
 # -----------------------------------------------------msg_validate--------------------------------------------------- #
@@ -487,11 +517,8 @@ def transsactions_handle_write(info):
     while not is_transactions_used:
         time.sleep(0.01)
     is_transactions_used = True
-    f = open(transactions_path, 'r')
-    f_txt = f.read() + json.dumps(info)
-    f.close()
     f = open(transactions_path, 'w')
-    f.write(f_txt)
+    f.write(json.dumps(info))
     f.close()
     is_transactions_used = False
 
@@ -506,6 +533,14 @@ def transsactions_handle_read():
     f.close()
     is_transactions_used = False
     return f_txt
+
+
+def transsactions_handle_update(new_tx):
+    info = transsactions_handle_read()
+    for i in info:
+        if i.hash == new_tx.hash:
+            i = new_tx
+    transsactions_handle_write(info)
 
 # -----------------------------------------------------file_handle---------------------------------------------------- #
 # -----------------------------------------------------random_shit---------------------------------------------------- #
@@ -522,7 +557,25 @@ def search_tx_by_hash(hsh):
 def search_block_by_hash(hsh):
     pass
 
+
+def calc_merkle_root(hsh_arr):
+    length = len(hsh_arr)
+    if length == 1:
+        return hsh_arr[0]
+    if length % 2 != 0:
+        hsh_arr.append(hsh_arr[length-1])
+        length += 1
+    new_hsh_arr = []
+    for i in range(int(length/2)):
+        new_hsh_arr.append(hashlib.sha256(hashlib.sha256(hsh_arr[2*i]+hsh_arr[2*i+1])))
+    return calc_merkle_root(new_hsh_arr)
+
+
+def create_struct_ord(length):
+    return "<" + str(length) + "s"
+
 # -----------------------------------------------------random_shit---------------------------------------------------- #
+
 
 if __name__ == '__main__':
     x = struct.pack("<8s", "joe mama".encode())
