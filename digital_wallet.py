@@ -17,6 +17,11 @@ Block = namedtuple("Block", "version prev_block_hash merkle_root timestamp bits 
 
 Addr = namedtuple("Addr", "services ipv6 port")
 
+Branch = namedtuple("Branch", "Block children")
+
+block_tree = Branch(None, [])
+is_block_tree_used = False
+
 blockchain_path = ""
 is_blockchain_used = False
 
@@ -656,8 +661,82 @@ def init_block_download(s, agreed_version):
     return True
 
 
-def block_chain_gen(block_tuple):
-    pass
+def add_block_to_tree(block_tuple):
+    if not validate_block(block_tuple):
+        return False
+    cur_b = Branch(Block(block_tuple[0], block_tuple[1], block_tuple[2], block_tuple[3], block_tuple[4], block_tuple[5], block_tuple[7], block_tuple[6]), None)
+    global is_block_tree_used
+    while is_block_tree_used:
+        time.sleep(0.01)
+    is_block_tree_used = True
+    father = find_father(block_tree, cur_b.Block.prev_block_hash)
+    for i in father.children:
+        if i.Block.hash == cur_b.Block.hash:
+            is_block_tree_used = False
+            return False
+    father.children.append(cur_b)
+    is_block_tree_used = False
+    return True
+
+
+def find_father(branch, hsh):  # only use when tree isn't used
+    if branch is None:
+        return None
+    if branch.Block.hash == hsh:
+        return branch
+    for i in branch.children:
+        req = find_father(i, hsh)
+        if not (req is None):
+            return req
+    return None
+
+
+def add_to_blockchain():
+    global block_tree
+    global is_block_tree_used
+    while is_block_tree_used:
+        time.sleep(0.01)
+    is_block_tree_used = True
+    maxi = [0, None]
+    for i in block_tree.children:
+        if get_longest_branch(i) > maxi[0]:
+            maxi[0] = get_longest_branch(i)
+            maxi[1] = i
+
+    if maxi[0] >= safe_length:
+        blockchain = blockchain_handle_read()
+        blockchain.append(maxi[1].Block)
+        blockchain_handle_write(blockchain)
+        block_tree = maxi[1]
+        return True
+
+    return False
+
+
+def get_longest_branch(tree):
+    if len(tree.children) == 0:
+        return 1
+    maxi = 0
+    for i in tree.children:
+        if get_longest_branch(i) > maxi:
+            maxi = get_longest_branch(i)
+    return maxi + 1
+
+
+def socket_handler(s, ipvsix, porto):
+    agreed_version = version_handshake(s, ipvsix, porto)
+    if agreed_version < 1:
+        return
+    init_block_download(s, agreed_version)
+    while True:
+        try:
+            msg_tuple = parse_msg(s)
+
+        except Exception as e:
+            print(e)
+            break
+
+
 
 
 
