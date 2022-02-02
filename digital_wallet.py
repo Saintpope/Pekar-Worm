@@ -598,13 +598,73 @@ def version_handshake(s, ipvsix, porto):
         return -2
     return pref_version
 
-# -----------------------------------------------------random_shit---------------------------------------------------- #
 
+def create_block_locator_hash():
+    block_chain = blockchain_handle_read()
+    blk_loc_hsh = []
+    for i in range(int(len(block_chain)/10)):
+        blk_loc_hsh.append(block_chain[-10*i-1:-(10*i)].hash)
+    if blk_loc_hsh[len(blk_loc_hsh)-1] != block_chain[0].hash:
+        blk_loc_hsh.append(block_chain[0].hash)
+    return blk_loc_hsh
+
+
+def divide_tuple_inv(inv_tuple):
+    output = []
+    i = 0
+    while 128*(i+1) < len(inv_tuple):
+        output.append(inv_tuple[128*i:128*(i+1)])
+        i += 1
+    output.append(inv_tuple[128*i:])
+    return output
+
+
+def init_block_download(s, agreed_version):
+    flag = True
+    while flag:
+        s.sendall(create_msg(create_getblocks(agreed_version, create_block_locator_hash(), 0), "getblocks"))
+        msg_tuple = parse_msg(s)
+        if len(msg_tuple) == 0:
+            return False
+        if (not validate_msg(msg_tuple)) or msg_tuple[1] != "inv":
+            return False
+        try:
+            inv_tuple = parse_inv_getdata_notfound_msg(msg_tuple[4])
+        except Exception as e:
+            print(e)
+            return False
+        if len(inv_tuple) == 0:
+            break
+        for i in divide_tuple_inv(inv_tuple):
+            s.sendall(create_msg(create_getdata_msg(i), "getdata"))
+            for j in range(len(i)):
+                msg_tuple = parse_msg(s)
+                if len(msg_tuple) == 0:
+                    return False
+                if (not validate_msg(msg_tuple)) or msg_tuple[1] != "block":
+                    return False
+                try:
+                    block_tuple = parse_block_msg(msg_tuple[4])
+                except Exception as e:
+                    print(e)
+                    return False
+                if validate_block(block_tuple):
+                    b1 = Block(block_tuple[0], block_tuple[1], block_tuple[2], block_tuple[3], block_tuple[4], block_tuple[5], block_tuple[7], block_tuple[6])
+                    block_chain = blockchain_handle_read()
+                    block_chain.append(b1)
+                    blockchain_handle_write(block_chain)
+    return True
+
+
+def block_chain_gen(block_tuple):
+    pass
+
+
+
+# -----------------------------------------------------random_shit---------------------------------------------------- #
+#inferkit
 
 if __name__ == '__main__':
-    x = struct.pack("<8s", "joe mama".encode())
-    y = struct.unpack("<8s", x)
-    print("joe mama".encode())
-    print(x)
-    print(y)
+   pass
+
 
