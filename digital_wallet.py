@@ -22,13 +22,13 @@ Branch = namedtuple("Branch", "Block children")
 block_tree = Branch(None, [])
 is_block_tree_used = False
 
-blockchain_path = ""
+blockchain_path = r"D:\eilon\works\bitcoinShit\blockchain.txt"
 is_blockchain_used = False
 
-transactions_path = ""
+transactions_path = r"D:\eilon\works\bitcoinShit\tx.txt"
 is_transactions_used = False
 
-addresses_path = ""
+addresses_path = r"D:\eilon\works\bitcoinShit\addresses.txt"
 is_addresses_used = False
 
 safe_length = 6
@@ -145,22 +145,26 @@ def parse_msg(soc):
 
 def parse_net_addr(payload, is_version, version_net):  # payload is sequence of bytes
     time_net = ""
+    total_offset = 0
     if (not is_version) and version_net >= 31402:
         time_net = struct.unpack("<L", payload[:4])[0]
-    services_net = struct.unpack("<Q", payload[4:12])[0]
-    ipaddr = struct.unpack(">16s", payload[12:28])[0]
-    port = struct.unpack(">H", payload[28:30])[0]
+        total_offset = 4
+    services_net = struct.unpack("<Q", payload[total_offset:total_offset+8])[0]
+    total_offset += 8
+    ipaddr = struct.unpack(">16s", payload[total_offset:total_offset+16])[0]
+    total_offset += 16
+    port = struct.unpack(">H", payload[total_offset:total_offset+2])[0]
     return time_net, services_net, ipaddr, port
 
 
 def parse_var_len_int(payload):  # return length of field
-    if struct.unpack("B", payload[0])[0] < 253:
-        return struct.unpack("B", payload[0])[0], 1
-    if struct.unpack("B", payload[0])[0] == 253:
+    if payload[0] < 253:
+        return payload[0], 1
+    if int(struct.unpack("B", payload[0])[0]) == 253:
         return struct.unpack("<H", payload[1:3])[0], 3
-    if struct.unpack("B", payload[0])[0] == 254:
+    if int(struct.unpack("B", payload[0])[0]) == 254:
         return struct.unpack("<L", payload[1:5])[0], 5
-    if struct.unpack("B", payload[0])[0] == 255:
+    if int(struct.unpack("B", payload[0])[0]) == 255:
         return struct.unpack("<Q", payload[1:9])[0], 9
 
 
@@ -170,7 +174,7 @@ def parse_var_len_str(payload):
 
 
 def parse_version_msg(payload):  # payload is sequence of bytes
-    version_ver = struct.unpack("<L", payload[:4])[0]
+    version_ver = struct.unpack("<l", payload[:4])[0]
     used_version = min(version_ver, my_version)  # check later
     services_ver = struct.unpack("<Q", payload[4:12])[0]
     timestamp = struct.unpack("<Q", payload[12:20])[0]
@@ -413,7 +417,7 @@ def validate_tx(tx_tuple):  # not coinbase txs, create seperate func for them. v
     sum_input = 0
     spent_tx = []
     for i in tx_tuple[1]:
-        itx = search_tx_by_hash(i[0][0])
+        itx = search_tx_by_hash_in_blockchain(i[0][0])
         if itx is None:
             return False
         if not itx.is_valid:
@@ -708,8 +712,10 @@ def add_to_blockchain():
         blockchain.append(maxi[1].Block)
         blockchain_handle_write(blockchain)
         block_tree = maxi[1]
+        is_block_tree_used = False
         return True
 
+    is_block_tree_used = False
     return False
 
 
@@ -723,27 +729,57 @@ def get_longest_branch(tree):
     return maxi + 1
 
 
+def search_tx_by_hash_in_blockchain(hsh):
+    blockchain = blockchain_handle_read()
+    for i in blockchain:
+        for j in i[6]:
+            if j[5] == hsh:
+                return j
+    return None
+
+
 def socket_handler(s, ipvsix, porto):
     agreed_version = version_handshake(s, ipvsix, porto)
-    if agreed_version < 1:
+    if agreed_version < 1:  # fix later
         return
     init_block_download(s, agreed_version)
     while True:
         try:
             msg_tuple = parse_msg(s)
-
+            if not validate_msg(msg_tuple):
+                s.sendall(create_msg(create_reject_msg(msg_tuple[1], 0x10, "REJECT_INVALID", ""), "reject"))
+            if msg_tuple[1] == "ping":
+                s.sendall(create_msg("", "pong"))
+            if msg_tuple[1] == "inv":
+                inv_list = parse_inv_getdata_notfound_msg(msg_tuple[4])
+                req_lst = []
+                for i in inv_list:
+                    if i[0] == 2:
+                        req_lst.append(i)
+                s.sendall(create_msg(create_getdata_msg(req_lst), "getdata"))
+                for i in req_lst:
+                    msg_tuple = parse_msg(s)
+                    if (not validate_msg(msg_tuple)) or msg_tuple[1] == "block":
+                        s.sendall(create_msg(create_reject_msg(msg_tuple[1], 0x10, "REJECT_INVALID", ""), "reject"))
+                    block_tuple = parse_block_msg(msg_tuple[4])
+                    if not add_block_to_tree(block_tuple):
+                        s.sendall(create_msg(create_reject_msg(msg_tuple[1], 0x10, "REJECT_INVALID", ""), "reject"))
+                    add_to_blockchain()
         except Exception as e:
             print(e)
             break
-
-
-
-
-
 # -----------------------------------------------------random_shit---------------------------------------------------- #
 #inferkit
 
+
 if __name__ == '__main__':
-   pass
+    msg = 0xE215104D010000000000000000000000000000000000FFFF0A000001208D
+    msg = msg.to_bytes(30, 'big')
+
+    print(parse_net_addr(msg, False, 60003))
+
+
+
+
 
 
