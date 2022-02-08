@@ -545,6 +545,17 @@ def transsactions_handle_update(new_tx):
             i = new_tx
     transsactions_handle_write(info)
 
+
+def tx_update_in_blockchain(new_tx):
+    blockchain = blockchain_handle_read()
+    for i in blockchain:
+        for j in i[6]:
+            old_tx = j
+            if new_tx[5] == j[5]:  # check if work
+                old_tx = new_tx
+            j = old_tx
+    blockchain_handle_write(blockchain)
+
 # -----------------------------------------------------file_handle---------------------------------------------------- #
 # -----------------------------------------------------random_shit---------------------------------------------------- #
 
@@ -708,6 +719,11 @@ def add_to_blockchain():
             maxi[1] = i
 
     if maxi[0] >= safe_length:
+        for i in maxi[0][0][6]:
+            for j in i[0]:
+                tx = search_tx_by_hash_in_blockchain(j[0])
+                tx[1][1][2] = False
+                tx_update_in_blockchain(tx)
         blockchain = blockchain_handle_read()
         blockchain.append(maxi[1].Block)
         blockchain_handle_write(blockchain)
