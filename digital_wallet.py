@@ -280,14 +280,21 @@ def parse_tx_msg(payload):
     txout_len, txout_len_offset = parse_var_len_int(payload[4+offset_flag+txin_len_offset+sum_txin_offset:])
     total_offset = 4+offset_flag+txin_len_offset+sum_txin_offset+txout_len_offset
     txout = []
+    print(txout_len)
     for i in range(txout_len):
+        print(i)
         a_txout = parse_txout_msg(payload[total_offset:])
-        txout.append(a_txout[:3])
-        total_offset += a_txout[3]
-    wd, wd_offset = parse_witnessdata_msg(payload[total_offset:])
+        print(a_txout)
+        txout.append(a_txout[:2])
+        total_offset += a_txout[2]
+    wd_offset = 0
+    wd = ''
+    if flag == 1:
+        wd, wd_offset = parse_witnessdata_msg(payload[total_offset:])
     total_offset += wd_offset
-    lock_time = struct.unpack("<L", payload[:-4])
-    hsh = hashlib.sha256(hashlib.sha256(payload))
+    lock_time = struct.unpack("<L", payload[total_offset:])[0]
+    hsh = ''
+    hsh = hashlib.sha256(hashlib.sha256(payload).digest()).digest()
     return version_tx, txin, txout, lock_time, hsh, total_offset+4
 
 
@@ -379,7 +386,7 @@ def create_command(command):
 
 
 def create_msg(payload, command):
-    return struct.pack("<L", my_magic_val) + create_command(command) + struct.pack("<L", len(payload)) + struct.pack("<32s", hashlib.sha256(hashlib.sha256(payload[:32]))) + payload
+    return struct.pack("<L", my_magic_val) + create_command(command) + struct.pack("<L", len(payload)) + struct.pack("<32s", hashlib.sha256(hashlib.sha256(payload))) + payload
 
 
 def create_getblocks(agreed_version, block_locator_hashes, hash_stop):
@@ -397,14 +404,27 @@ def create_reject_msg(typ, ccode, ccode_str, hsh_rjct_obj):
 # -----------------------------------------------------msg_validate--------------------------------------------------- #
 
 
+def extract_comm(com):
+    stri = ""
+    for i in com.decode("utf-8"):
+        if i in ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z']:
+            stri += i
+    return stri
+
+
 def validate_msg(msg_tuple):
     if msg_tuple[0] != my_magic_val:
+        print(0)
         return False
-    if msg_tuple[1] not in ["inv", "blocks", "ping", "pong", "version", "verac"]:  # check later
+    if extract_comm(msg_tuple[1]) not in ["inv", "blocks", "ping", "pong", "version", "verac", "tx"]:  # check later
+        print(1)
+        print(extract_comm(msg_tuple[1]))
         return False
-    if msg_tuple[2] != len(msg_tuple[4])/8:
+    if msg_tuple[2] != len(msg_tuple[4]):
+        print(2)
         return False
-    if msg_tuple[3] != hashlib.sha256(hashlib.sha256(msg_tuple[4][:32])):
+    if msg_tuple[3] != hashlib.sha256(hashlib.sha256(msg_tuple[4]).digest()).digest()[:4]:
+        print(3)
         return False
     return True
 
@@ -471,7 +491,7 @@ def validate_block(blk_tuple):
 
 def blockchain_handle_write(info):  # info = Block object arr
     global is_blockchain_used
-    while not is_blockchain_used:
+    while is_blockchain_used:
         time.sleep(0.01)
     is_blockchain_used = True
     f = open(blockchain_path, 'w')
@@ -482,7 +502,7 @@ def blockchain_handle_write(info):  # info = Block object arr
 
 def blockchain_handle_read():
     global is_blockchain_used
-    while not is_blockchain_used:
+    while is_blockchain_used:
         time.sleep(0.01)
     is_blockchain_used = True
     f = open(blockchain_path, 'r')
@@ -494,7 +514,7 @@ def blockchain_handle_read():
 
 def addresses_handle_write(info):  # info = address object arr
     global is_addresses_used
-    while not is_addresses_used:
+    while is_addresses_used:
         time.sleep(0.01)
     is_addresses_used = True
     f = open(addresses_path, 'w')
@@ -505,7 +525,7 @@ def addresses_handle_write(info):  # info = address object arr
 
 def addresses_handle_read():
     global is_addresses_used
-    while not is_addresses_used:
+    while is_addresses_used:
         time.sleep(0.01)
     is_addresses_used = True
     f = open(addresses_path, 'r')
@@ -528,7 +548,7 @@ def transsactions_handle_write(info):
 
 def transsactions_handle_read():
     global is_transactions_used
-    while not is_transactions_used:
+    while is_transactions_used:
         time.sleep(0.01)
     is_transactions_used = True
     f = open(transactions_path, 'r')
@@ -694,7 +714,7 @@ def add_block_to_tree(block_tuple):
     return True
 
 
-def find_father(branch, hsh):  # only use when tree isn't used
+def find_father(branch, hsh):  # only use when tree isn't used unless in add_block_to_tree
     if branch is None:
         return None
     if branch.Block.hash == hsh:
@@ -785,14 +805,41 @@ def socket_handler(s, ipvsix, porto):
             print(e)
             break
 # -----------------------------------------------------random_shit---------------------------------------------------- #
-#inferkit
+# inferkit
 
 
 if __name__ == '__main__':
-    msg = 0xE215104D010000000000000000000000000000000000FFFF0A000001208D
-    msg = msg.to_bytes(30, 'big')
+    msg1 = 0xF9BEB4D974780000000000000000000002010000E293CDBE01000000016DBDDB085B1D8AF75184F0BC01FAD58D1266E9B63B50881990E4B40D6AEE3629000000
+    msg1 = msg1.to_bytes(64, 'big')
+    print(msg1)
 
-    print(parse_net_addr(msg, False, 60003))
+    msg2 = 0x008B483045022100F3581E1972AE8AC7C7367A7A253BC1135223ADB9A468BB3A59233F45BC578380022059AF01CA17D00E41837A1D58E97AA31BAE584EDEC28D
+    msg2 = msg2.to_bytes(64, 'big')
+    print(msg2)
+
+    msg3 = 0x35BD96923690913BAE9A0141049C02BFC97EF236CE6D8FE5D94013C721E915982ACD2B12B65D9B7D59E20A842005F8FC4E02532E873D37B96F09D6D4511ADA8F
+    msg3 = msg3.to_bytes(64, 'big')
+    print(msg3)
+
+    msg4 = 0x14042F46614A4C70C0F14BEFF5FFFFFFFF02404B4C00000000001976A9141AA0CD1CBEA6E7458A7ABAD512A9D9EA1AFB225E88AC80FAE9C7000000001976A914
+    msg4 = msg4.to_bytes(64, 'big')
+    print(msg4)
+
+    msg5 = 0x0EAB5BEA436A0484CFAB12485EFDA0B78B4ECC5288AC00000000
+    msg5 = msg5.to_bytes(26, 'big')
+    print(msg5)
+
+    msg = msg1 + msg2 + msg3 + msg4 + msg5
+    # print(msg)
+    # magic_num = my_magic_val
+    # command = struct.unpack("<12s", msg[4:16])[0]
+    # length = struct.unpack("<L", msg[16:20])[0]
+    # checksum = struct.unpack("<4s", msg[20:24])[0]
+    # payload_bytes = msg[24:]
+    #
+    # print(validate_msg((magic_num, command, length, checksum, payload_bytes)))
+    print(parse_tx_msg(msg[24:]))
+
 
 
 
