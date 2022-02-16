@@ -1,4 +1,3 @@
-
 import struct
 import hashlib
 from typing import List
@@ -36,13 +35,12 @@ my_port = ("node", 18333)
 net = "testnet"
 my_version = 70001
 services = 1
-my_ipv6 = 0
+my_ipv6 = 0x00000000000000000000FFFF0A000001.to_bytes(16, 'big')
 mining_reward = 6.25
 
 magic_val = {"main": 0xD9B4BEF9, "testnet": 0xDAB5BFFA, "signet": 0x40CF030A, "namecoin": 0xFEB4BEF9}
 my_magic_val = 0xDAB5BFFA
 command_lst = ["version", "verack", "addr", "inv", "getdata", "notfound", "getblocks", "getheaders", "tx", "block", ""]
-
 
 
 def get_blocks():  # listen and return broadcasted blocks
@@ -126,6 +124,7 @@ def byte_arr_to_str(arr):
         this_string += str(i)
     return this_string
 
+
 # --------------------------------------------------------parses------------------------------------------------------ #
 
 
@@ -149,11 +148,11 @@ def parse_net_addr(payload, is_version, version_net):  # payload is sequence of 
     if (not is_version) and version_net >= 31402:
         time_net = struct.unpack("<L", payload[:4])[0]
         total_offset = 4
-    services_net = struct.unpack("<Q", payload[total_offset:total_offset+8])[0]
+    services_net = struct.unpack("<Q", payload[total_offset:total_offset + 8])[0]
     total_offset += 8
-    ipaddr = struct.unpack(">16s", payload[total_offset:total_offset+16])[0]
+    ipaddr = struct.unpack(">16s", payload[total_offset:total_offset + 16])[0]
     total_offset += 16
-    port = struct.unpack(">H", payload[total_offset:total_offset+2])[0]
+    port = struct.unpack(">H", payload[total_offset:total_offset + 2])[0]
     return time_net, services_net, ipaddr, port
 
 
@@ -170,27 +169,36 @@ def parse_var_len_int(payload):  # return length of field
 
 def parse_var_len_str(payload):
     length, length_of_len = parse_var_len_int(payload)
-    return struct.unpack(create_struct_ord(length), payload[length_of_len:length+length_of_len])[0], length+length_of_len
+    return struct.unpack(create_struct_ord(length), payload[length_of_len:length + length_of_len])[
+               0], length + length_of_len
 
 
 def parse_version_msg(payload):  # payload is sequence of bytes
     version_ver = struct.unpack("<l", payload[:4])[0]
+    print(version_ver)
     used_version = min(version_ver, my_version)  # check later
     services_ver = struct.unpack("<Q", payload[4:12])[0]
+    print(services_ver)
     timestamp = struct.unpack("<Q", payload[12:20])[0]
+    print(timestamp)
     net_addr_recv = parse_net_addr(payload[20:46], True, version_ver)
-    net_addr_sender = ""
+    print(net_addr_recv)
+    net_addr_sender = []
     nonce = ""
     user_agent = ""
     start_height = ""
     relay = False
     if version_ver >= 106:
         net_addr_sender = parse_net_addr(payload[46:72], True, version_ver)
+        print(net_addr_sender)
         nonce = struct.unpack("<Q", payload[72:80])[0]
+        print(nonce)
         user_agent, temp_len = parse_var_len_str(payload[80:])
-        start_height = struct.unpack("<L", payload[80+temp_len:84+temp_len])[0]
+        print(temp_len)
+        start_height = struct.unpack("<L", payload[80 + temp_len:84 + temp_len])[0]
+        print(start_height)
         if version_ver >= 70001:
-            relay = struct.unpack("?", payload[84+temp_len:85+temp_len])[0]
+            relay = struct.unpack("<?", payload[84 + temp_len:])[0]
     return version_ver, services_ver, timestamp, net_addr_recv, net_addr_sender, nonce, user_agent, start_height, relay
 
 
@@ -216,7 +224,7 @@ def parse_inv_getdata_notfound_msg(payload):
         return None
     inv_lst = []
     for i in range(length):
-        inv_lst.append(parse_inventory_vector(payload[i*36+length_of_len]))
+        inv_lst.append(parse_inventory_vector(payload[i * 36 + length_of_len]))
     return inv_lst
 
 
@@ -239,16 +247,18 @@ def parse_outpoint_msg(payload):
 def parse_txin_msg(payload):
     previous_output = parse_outpoint_msg(payload[:36])[0]
     script_len, script_len_offset = parse_var_len_int(payload[36:])
-    sig = struct.unpack(create_struct_ord(script_len), payload[36+script_len_offset:36+script_len+script_len_offset])[0]
-    sequence = struct.unpack("<L", payload[36+script_len+script_len_offset:40+script_len+script_len_offset])[0]
-    return previous_output, sig, sequence, 40+script_len+script_len_offset
+    sig = \
+    struct.unpack(create_struct_ord(script_len), payload[36 + script_len_offset:36 + script_len + script_len_offset])[0]
+    sequence = struct.unpack("<L", payload[36 + script_len + script_len_offset:40 + script_len + script_len_offset])[0]
+    return previous_output, sig, sequence, 40 + script_len + script_len_offset
 
 
 def parse_txout_msg(payload):
     value = struct.unpack("<Q", payload[:8])[0]
     pk_script_len, pk_script_len_offset = parse_var_len_int(payload[8:])
-    pk_script = struct.unpack(create_struct_ord(pk_script_len), payload[8+pk_script_len_offset:8+pk_script_len_offset+pk_script_len])[0]
-    return value, pk_script, 8+pk_script_len_offset+pk_script_len
+    pk_script = struct.unpack(create_struct_ord(pk_script_len),
+                              payload[8 + pk_script_len_offset:8 + pk_script_len_offset + pk_script_len])[0]
+    return value, pk_script, 8 + pk_script_len_offset + pk_script_len
 
 
 def parse_witnessdata_msg(payload):
@@ -259,7 +269,7 @@ def parse_witnessdata_msg(payload):
     for i in range(wd_len):
         wd_len_temp, wd_len_offset_temp = parse_var_len_int(payload[total_offset:])
         total_offset += wd_len_offset_temp
-        wd.append(struct.unpack(create_struct_ord(wd_len_temp), payload[total_offset:total_offset+wd_len_temp])[0])
+        wd.append(struct.unpack(create_struct_ord(wd_len_temp), payload[total_offset:total_offset + wd_len_temp])[0])
         total_offset += wd_len_temp
     return wd, total_offset
 
@@ -270,15 +280,15 @@ def parse_tx_msg(payload):
     offset_flag = 0
     if flag == 1:
         offset_flag = 2
-    txin_len, txin_len_offset = parse_var_len_int(payload[4+offset_flag:])
+    txin_len, txin_len_offset = parse_var_len_int(payload[4 + offset_flag:])
     sum_txin_offset = 0
     txin = []
     for i in range(txin_len):
-        a_txin = parse_txin_msg(payload[4+offset_flag+txin_len_offset+sum_txin_offset:])
+        a_txin = parse_txin_msg(payload[4 + offset_flag + txin_len_offset + sum_txin_offset:])
         txin.append(a_txin[:3])
         sum_txin_offset += a_txin[3]
-    txout_len, txout_len_offset = parse_var_len_int(payload[4+offset_flag+txin_len_offset+sum_txin_offset:])
-    total_offset = 4+offset_flag+txin_len_offset+sum_txin_offset+txout_len_offset
+    txout_len, txout_len_offset = parse_var_len_int(payload[4 + offset_flag + txin_len_offset + sum_txin_offset:])
+    total_offset = 4 + offset_flag + txin_len_offset + sum_txin_offset + txout_len_offset
     txout = []
     print(txout_len)
     for i in range(txout_len):
@@ -295,7 +305,7 @@ def parse_tx_msg(payload):
     lock_time = struct.unpack("<L", payload[total_offset:])[0]
     hsh = ''
     hsh = hashlib.sha256(hashlib.sha256(payload).digest()).digest()
-    return version_tx, txin, txout, lock_time, hsh, total_offset+4
+    return version_tx, txin, txout, lock_time, hsh, total_offset + 4
 
 
 def parse_block_msg(payload):
@@ -308,17 +318,17 @@ def parse_block_msg(payload):
     tx_count, total_offset = parse_var_len_int(payload[80:])
     tx: List[tuple] = []
     for i in range(tx_count):
-        a_tx = parse_tx_msg(payload[80+total_offset:])
+        a_tx = parse_tx_msg(payload[80 + total_offset:])
         tx.append(a_tx[:5])
         total_offset += a_tx[5]
-    hsh = hashlib.sha256(hashlib.sha256(payload[:80]))
+    hsh = hashlib.sha256(hashlib.sha256(payload[:80]).digest()).digest()
     return version_blk, prev_block, merkle_root, timestamp, bits, nonce, hsh, tx
 
 
 def parse_reject_msg(payload):
     total_offset = 0
     msg_typ, total_offset = parse_var_len_str(payload)
-    ccode = struct.unpack("B", payload[total_offset:total_offset+1])[0]
+    ccode = struct.unpack("B", payload[total_offset:total_offset + 1])[0]
     total_offset += 1
     reason, temp_offset = parse_var_len_str(payload[total_offset:])
     total_offset += temp_offset
@@ -332,23 +342,27 @@ def parse_reject_msg(payload):
 
 def create_net_addr(is_for_version, serv, ipvsix, porto):
     if is_for_version:
-        return struct.pack('<QpH', serv, ipvsix, porto)
-    return struct.pack('<LQpH', time.time(), serv, ipvsix, porto)
+        return struct.pack('<Q16sH', serv, ipvsix, porto)
+    return struct.pack('<LQ16sH', int(time.time()), serv, ipvsix, porto)
 
 
 def create_version_msg(serv, ipvsix, porto, needed_version, user_agent, start_height):
     if needed_version < 106:
-        return struct.pack("<LQQ", my_version, services, time.time()) + create_net_addr(True, serv, ipvsix, porto)
-    if needed_version >= 106:
-        return struct.pack("<LQQ", my_version, services, time.time()) + create_net_addr(True, serv, ipvsix, porto) + create_net_addr(True, services, my_ipv6, my_port[1]) + struct.pack("<Q", random.randint(0, 42069)) + create_var_str(user_agent) + struct.pack("<L", start_height)
+        return struct.pack("<LQQ", my_version, services, int(time.time())) + create_net_addr(True, serv, ipvsix, porto)
+    if needed_version >= 106 and needed_version < 70001:
+        return struct.pack("<LQQ", my_version, services, int(time.time())) + create_net_addr(True, serv, ipvsix,
+                                                                                             porto) + create_net_addr(
+            True, services, my_ipv6, my_port[1]) + struct.pack("<Q", random.randint(0, 42069)) + create_var_str(
+            user_agent) + struct.pack("<L", start_height)
     if needed_version >= 70001:
-        return struct.pack("<LQQ", my_version, services, time.time()) + create_net_addr(True, serv, ipvsix,
-                                                                                        porto) + create_net_addr(True,
-                                                                                                              services,
-                                                                                                              my_ipv6,
-                                                                                                              my_port[
-                                                                                                                  1]) + struct.pack(
-            "<Q", random.randint(0, 42069)) + create_var_str(user_agent) + struct.pack("<L?", start_height, False)
+        return struct.pack("<LQQ", my_version, services, int(time.time())) + create_net_addr(True, serv, ipvsix,
+                                                                                             porto) + create_net_addr(
+            True,
+            services,
+            my_ipv6,
+            my_port[
+                1]) + struct.pack(
+            "<Q", random.randint(0, 42069)) + create_var_str(user_agent) + struct.pack("<L", start_height) + struct.pack("?", False)
 
 
 def create_var_int(info):  # info can be an array or string
@@ -363,7 +377,7 @@ def create_var_int(info):  # info can be an array or string
 
 
 def create_var_str(stri):
-    return create_var_int(stri) + struct.pack(create_struct_ord(len(stri)), stri)
+    return create_var_int(stri) + struct.pack(create_struct_ord(len(stri)), stri.encode())
 
 
 def create_inventory_vector(typ, hsh):
@@ -379,14 +393,15 @@ def create_getdata_msg(inv_vecs):  # gets an array of inv_vec [[typ1,hsh1], ....
 
 def create_command(command):
     order = "<" + str(len(command)) + "s"
-    output = struct.pack(order, command)
+    output = struct.pack(order, command.encode())
     while len(output) < 12:
         output += struct.pack("x")
     return output
 
 
 def create_msg(payload, command):
-    return struct.pack("<L", my_magic_val) + create_command(command) + struct.pack("<L", len(payload)) + struct.pack("<32s", hashlib.sha256(hashlib.sha256(payload))) + payload
+    return struct.pack("<L", my_magic_val) + create_command(command) + struct.pack("<L", len(payload)) + struct.pack(
+        "<L", int.from_bytes(hashlib.sha256(hashlib.sha256(payload).digest()).digest()[:4], 'little')) + payload
 
 
 def create_getblocks(agreed_version, block_locator_hashes, hash_stop):
@@ -400,6 +415,7 @@ def create_getblocks(agreed_version, block_locator_hashes, hash_stop):
 def create_reject_msg(typ, ccode, ccode_str, hsh_rjct_obj):
     return create_var_str(typ) + struct.pack("B", ccode) + create_var_str(ccode_str) + struct.pack("<32s", hsh_rjct_obj)
 
+
 # ------------------------------------------------------msg_create---------------------------------------------------- #
 # -----------------------------------------------------msg_validate--------------------------------------------------- #
 
@@ -407,7 +423,8 @@ def create_reject_msg(typ, ccode, ccode_str, hsh_rjct_obj):
 def extract_comm(com):
     stri = ""
     for i in com.decode("utf-8"):
-        if i in ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z']:
+        if i in ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't',
+                 'u', 'v', 'w', 'x', 'y', 'z']:
             stri += i
     return stri
 
@@ -424,6 +441,9 @@ def validate_msg(msg_tuple):
         print(2)
         return False
     if msg_tuple[3] != hashlib.sha256(hashlib.sha256(msg_tuple[4]).digest()).digest()[:4]:
+        print("validate msg")
+        print(msg_tuple[3])
+        print(hashlib.sha256(hashlib.sha256(msg_tuple[4]).digest()).digest()[:4])
         print(3)
         return False
     return True
@@ -461,10 +481,10 @@ def validate_tx(tx_tuple):  # not coinbase txs, create seperate func for them. v
 def validate_block(blk_tuple):
     hsh_arr = [blk_tuple[7][0][4]]
     fee_sum = 0
-    for i in range(len(blk_tuple[7])-1):  # validate all txs in block
-        if not validate_tx(blk_tuple[7][i+1]):
+    for i in range(len(blk_tuple[7]) - 1):  # validate all txs in block
+        if not validate_tx(blk_tuple[7][i + 1]):
             return False
-        hsh_arr.append(blk_tuple[7][i+1][4])
+        hsh_arr.append(blk_tuple[7][i + 1][4])
         txin_sum = 0
         for j in blk_tuple[7][1]:
             itx = search_tx_by_hash(j[0][0])
@@ -576,6 +596,7 @@ def tx_update_in_blockchain(new_tx):
             j = old_tx
     blockchain_handle_write(blockchain)
 
+
 # -----------------------------------------------------file_handle---------------------------------------------------- #
 # -----------------------------------------------------random_shit---------------------------------------------------- #
 
@@ -597,11 +618,11 @@ def calc_merkle_root(hsh_arr):
     if length == 1:
         return hsh_arr[0]
     if length % 2 != 0:
-        hsh_arr.append(hsh_arr[length-1])
+        hsh_arr.append(hsh_arr[length - 1])
         length += 1
     new_hsh_arr = []
-    for i in range(int(length/2)):
-        new_hsh_arr.append(hashlib.sha256(hashlib.sha256(hsh_arr[2*i]+hsh_arr[2*i+1])))
+    for i in range(int(length / 2)):
+        new_hsh_arr.append(hashlib.sha256(hashlib.sha256(hsh_arr[2 * i] + hsh_arr[2 * i + 1]).digest()).digest())
     return calc_merkle_root(new_hsh_arr)
 
 
@@ -611,40 +632,59 @@ def create_struct_ord(length):
 
 def version_handshake(s, ipvsix, porto):
     try:
-        s.sendall(create_msg(create_version_msg(services, ipvsix, porto, my_version, "", 0), "version"))
+        version_msg = create_version_msg(services, ipvsix, porto, my_version, "", 0)
+        print("created version msg")
+        the_msg = create_msg(version_msg, "version")
+        print("created msg")
+        s.sendall(the_msg)
     except Exception as e:
         print(e)
+        print("went wrong in line 614")
         return -1
     msg_tuple = parse_msg(s)
+    print("got msg")
     if len(msg_tuple) == 0:
+        print("line 627")
         return 0
-    if (not validate_msg(msg_tuple)) or msg_tuple[1] != "version":
+    print(validate_msg(msg_tuple))
+    print(msg_tuple[1])
+    if (not validate_msg(msg_tuple)) or extract_comm(msg_tuple[1]) != "version":
+        print("line 630")
         return 0
     try:
+        print("line 633")
         version_tuple = parse_version_msg(msg_tuple[4])
     except Exception as e:
         print(e)
         return 0
     pref_version = min(my_version, version_tuple[0])
+    print("line 639")
     verac_tuple = parse_msg(s)
+    print("line 641")
     if len(verac_tuple) == 0:
+        print("line 643")
         return 0
     if (not validate_msg(verac_tuple)) or verac_tuple[1] != "verack":
+        print("line 646")
         return 0
     try:
+        print("line 649")
         s.sendall(create_msg(struct.pack("x"), "verack"))
     except Exception as e:
         print(e)
         return -2
+    addresses = addresses_handle_read()
+    addresses.append(Addr(version_tuple[1], ipvsix, porto))
+    addresses_handle_write(addresses)
     return pref_version
 
 
 def create_block_locator_hash():
     block_chain = blockchain_handle_read()
     blk_loc_hsh = []
-    for i in range(int(len(block_chain)/10)):
-        blk_loc_hsh.append(block_chain[-10*i-1:-(10*i)].hash)
-    if blk_loc_hsh[len(blk_loc_hsh)-1] != block_chain[0].hash:
+    for i in range(int(len(block_chain) / 10)):
+        blk_loc_hsh.append(block_chain[-10 * i - 1:-(10 * i)].hash)
+    if blk_loc_hsh[len(blk_loc_hsh) - 1] != block_chain[0].hash:
         blk_loc_hsh.append(block_chain[0].hash)
     return blk_loc_hsh
 
@@ -652,10 +692,10 @@ def create_block_locator_hash():
 def divide_tuple_inv(inv_tuple):
     output = []
     i = 0
-    while 128*(i+1) < len(inv_tuple):
-        output.append(inv_tuple[128*i:128*(i+1)])
+    while 128 * (i + 1) < len(inv_tuple):
+        output.append(inv_tuple[128 * i:128 * (i + 1)])
         i += 1
-    output.append(inv_tuple[128*i:])
+    output.append(inv_tuple[128 * i:])
     return output
 
 
@@ -689,7 +729,8 @@ def init_block_download(s, agreed_version):
                     print(e)
                     return False
                 if validate_block(block_tuple):
-                    b1 = Block(block_tuple[0], block_tuple[1], block_tuple[2], block_tuple[3], block_tuple[4], block_tuple[5], block_tuple[7], block_tuple[6])
+                    b1 = Block(block_tuple[0], block_tuple[1], block_tuple[2], block_tuple[3], block_tuple[4],
+                               block_tuple[5], block_tuple[7], block_tuple[6])
                     block_chain = blockchain_handle_read()
                     block_chain.append(b1)
                     blockchain_handle_write(block_chain)
@@ -699,7 +740,8 @@ def init_block_download(s, agreed_version):
 def add_block_to_tree(block_tuple):
     if not validate_block(block_tuple):
         return False
-    cur_b = Branch(Block(block_tuple[0], block_tuple[1], block_tuple[2], block_tuple[3], block_tuple[4], block_tuple[5], block_tuple[7], block_tuple[6]), None)
+    cur_b = Branch(Block(block_tuple[0], block_tuple[1], block_tuple[2], block_tuple[3], block_tuple[4], block_tuple[5],
+                         block_tuple[7], block_tuple[6]), None)
     global is_block_tree_used
     while is_block_tree_used:
         time.sleep(0.01)
@@ -804,32 +846,34 @@ def socket_handler(s, ipvsix, porto):
         except Exception as e:
             print(e)
             break
+
+
 # -----------------------------------------------------random_shit---------------------------------------------------- #
 # inferkit
 
 
 if __name__ == '__main__':
-    msg1 = 0xF9BEB4D974780000000000000000000002010000E293CDBE01000000016DBDDB085B1D8AF75184F0BC01FAD58D1266E9B63B50881990E4B40D6AEE3629000000
-    msg1 = msg1.to_bytes(64, 'big')
-    print(msg1)
-
-    msg2 = 0x008B483045022100F3581E1972AE8AC7C7367A7A253BC1135223ADB9A468BB3A59233F45BC578380022059AF01CA17D00E41837A1D58E97AA31BAE584EDEC28D
-    msg2 = msg2.to_bytes(64, 'big')
-    print(msg2)
-
-    msg3 = 0x35BD96923690913BAE9A0141049C02BFC97EF236CE6D8FE5D94013C721E915982ACD2B12B65D9B7D59E20A842005F8FC4E02532E873D37B96F09D6D4511ADA8F
-    msg3 = msg3.to_bytes(64, 'big')
-    print(msg3)
-
-    msg4 = 0x14042F46614A4C70C0F14BEFF5FFFFFFFF02404B4C00000000001976A9141AA0CD1CBEA6E7458A7ABAD512A9D9EA1AFB225E88AC80FAE9C7000000001976A914
-    msg4 = msg4.to_bytes(64, 'big')
-    print(msg4)
-
-    msg5 = 0x0EAB5BEA436A0484CFAB12485EFDA0B78B4ECC5288AC00000000
-    msg5 = msg5.to_bytes(26, 'big')
-    print(msg5)
-
-    msg = msg1 + msg2 + msg3 + msg4 + msg5
+    # msg1 = 0xF9BEB4D974780000000000000000000002010000E293CDBE01000000016DBDDB085B1D8AF75184F0BC01FAD58D1266E9B63B50881990E4B40D6AEE3629000000
+    # msg1 = msg1.to_bytes(64, 'big')
+    # print(msg1)
+    #
+    # msg2 = 0x008B483045022100F3581E1972AE8AC7C7367A7A253BC1135223ADB9A468BB3A59233F45BC578380022059AF01CA17D00E41837A1D58E97AA31BAE584EDEC28D
+    # msg2 = msg2.to_bytes(64, 'big')
+    # print(msg2)
+    #
+    # msg3 = 0x35BD96923690913BAE9A0141049C02BFC97EF236CE6D8FE5D94013C721E915982ACD2B12B65D9B7D59E20A842005F8FC4E02532E873D37B96F09D6D4511ADA8F
+    # msg3 = msg3.to_bytes(64, 'big')
+    # print(msg3)
+    #
+    # msg4 = 0x14042F46614A4C70C0F14BEFF5FFFFFFFF02404B4C00000000001976A9141AA0CD1CBEA6E7458A7ABAD512A9D9EA1AFB225E88AC80FAE9C7000000001976A914
+    # msg4 = msg4.to_bytes(64, 'big')
+    # print(msg4)
+    #
+    # msg5 = 0x0EAB5BEA436A0484CFAB12485EFDA0B78B4ECC5288AC00000000
+    # msg5 = msg5.to_bytes(26, 'big')
+    # print(msg5)
+    #
+    # msg = msg1 + msg2 + msg3 + msg4 + msg5
     # print(msg)
     # magic_num = my_magic_val
     # command = struct.unpack("<12s", msg[4:16])[0]
@@ -838,11 +882,11 @@ if __name__ == '__main__':
     # payload_bytes = msg[24:]
     #
     # print(validate_msg((magic_num, command, length, checksum, payload_bytes)))
-    print(parse_tx_msg(msg[24:]))
-
-
-
-
-
-
-
+    # print(parse_tx_msg(msg[24:]))
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect(('localhost', 18333))
+    print("beginning handshake")
+    ipv6_test = 0x00000000000000000000FFFF0A000001
+    ipv6_test = ipv6_test.to_bytes(16, 'little')
+    print(type(ipv6_test))
+    print(version_handshake(s, ipv6_test, 18333))
