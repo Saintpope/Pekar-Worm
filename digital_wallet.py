@@ -36,7 +36,7 @@ net = "testnet"
 my_version = 70001
 services = 1
 my_ipv6 = 0x00000000000000000000FFFF0A000001.to_bytes(16, 'big')
-mining_reward = 6.25
+mining_reward = 50
 
 magic_val = {"main": 0xD9B4BEF9, "testnet": 0xDAB5BFFA, "signet": 0x40CF030A, "namecoin": 0xFEB4BEF9}
 my_magic_val = 0xDAB5BFFA
@@ -275,12 +275,17 @@ def parse_witnessdata_msg(payload):
 
 
 def parse_tx_msg(payload):
+    print("tx")
     version_tx = struct.unpack("<L", payload[:4])[0]
-    flag = struct.unpack("<H", payload[4:6])[0]
+    print(version_tx)
+    flag = struct.unpack(">H", payload[4:6])[0]
+    print(payload[4:6])
     offset_flag = 0
     if flag == 1:
         offset_flag = 2
     txin_len, txin_len_offset = parse_var_len_int(payload[4 + offset_flag:])
+    print("****")
+    print(txin_len)
     sum_txin_offset = 0
     txin = []
     for i in range(txin_len):
@@ -302,7 +307,8 @@ def parse_tx_msg(payload):
     if flag == 1:
         wd, wd_offset = parse_witnessdata_msg(payload[total_offset:])
     total_offset += wd_offset
-    lock_time = struct.unpack("<L", payload[total_offset:])[0]
+    print(payload[total_offset:])
+    lock_time = struct.unpack("<L", payload[total_offset:total_offset+4])[0]
     hsh = ''
     hsh = hashlib.sha256(hashlib.sha256(payload).digest()).digest()
     return version_tx, txin, txout, lock_time, hsh, total_offset + 4
@@ -310,18 +316,27 @@ def parse_tx_msg(payload):
 
 def parse_block_msg(payload):
     version_blk = struct.unpack("<L", payload[:4])[0]
+    print(version_blk)
     prev_block = struct.unpack("<32s", payload[4:36])[0]
+    print(prev_block)
     merkle_root = struct.unpack("<32s", payload[36:68])[0]
+    print(merkle_root)
     timestamp = struct.unpack("<L", payload[68:72])[0]
+    print(timestamp)
     bits = struct.unpack("<L", payload[72:76])[0]
+    print(bits)
     nonce = struct.unpack("<L", payload[76:80])[0]
+    print(nonce)
     tx_count, total_offset = parse_var_len_int(payload[80:])
+    print(tx_count)
     tx: List[tuple] = []
     for i in range(tx_count):
         a_tx = parse_tx_msg(payload[80 + total_offset:])
+        print(a_tx)
         tx.append(a_tx[:5])
         total_offset += a_tx[5]
     hsh = hashlib.sha256(hashlib.sha256(payload[:80]).digest()).digest()
+    print("block")
     return version_blk, prev_block, merkle_root, timestamp, bits, nonce, hsh, tx
 
 
@@ -494,13 +509,22 @@ def validate_block(blk_tuple):
             txout_sum += j[0]
         fee_sum += txin_sum - txout_sum
 
-    if blk_tuple[7][0][2][0] != fee_sum + mining_reward:
+    if blk_tuple[7][0][2][0][0] * 0.00000001 != fee_sum + mining_reward:
+        print("miining fee")
+        print(blk_tuple[7][0][2][0][0])
+        print(fee_sum + mining_reward)
         return False
 
     if blk_tuple[2] != calc_merkle_root(hsh_arr):
+        print("merkle root")
         return False
 
-    if int(blk_tuple[6]) > blk_tuple[4]:
+    blk_hash_int = int.from_bytes(blk_tuple[6], 'little')
+    if blk_hash_int > blk_tuple[4] * 2**(8*(0x1b - 3)):
+        print("proof of work")
+        print(blk_hash_int)
+        print(blk_tuple[6])
+        print(blk_tuple[4] * 2**(8*(0x1b - 3)))
         return False
     return True
 
@@ -848,45 +872,23 @@ def socket_handler(s, ipvsix, porto):
             break
 
 
+def make_debug_shit_bytes(stri, num_of_bytes):
+    byti = "0x"
+    for i in stri:
+        if i in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F']:
+            byti += i
+    return int(byti, 16).to_bytes(num_of_bytes, 'big')
+
+
 # -----------------------------------------------------random_shit---------------------------------------------------- #
 # inferkit
 
 
 if __name__ == '__main__':
-    # msg1 = 0xF9BEB4D974780000000000000000000002010000E293CDBE01000000016DBDDB085B1D8AF75184F0BC01FAD58D1266E9B63B50881990E4B40D6AEE3629000000
-    # msg1 = msg1.to_bytes(64, 'big')
-    # print(msg1)
-    #
-    # msg2 = 0x008B483045022100F3581E1972AE8AC7C7367A7A253BC1135223ADB9A468BB3A59233F45BC578380022059AF01CA17D00E41837A1D58E97AA31BAE584EDEC28D
-    # msg2 = msg2.to_bytes(64, 'big')
-    # print(msg2)
-    #
-    # msg3 = 0x35BD96923690913BAE9A0141049C02BFC97EF236CE6D8FE5D94013C721E915982ACD2B12B65D9B7D59E20A842005F8FC4E02532E873D37B96F09D6D4511ADA8F
-    # msg3 = msg3.to_bytes(64, 'big')
-    # print(msg3)
-    #
-    # msg4 = 0x14042F46614A4C70C0F14BEFF5FFFFFFFF02404B4C00000000001976A9141AA0CD1CBEA6E7458A7ABAD512A9D9EA1AFB225E88AC80FAE9C7000000001976A914
-    # msg4 = msg4.to_bytes(64, 'big')
-    # print(msg4)
-    #
-    # msg5 = 0x0EAB5BEA436A0484CFAB12485EFDA0B78B4ECC5288AC00000000
-    # msg5 = msg5.to_bytes(26, 'big')
-    # print(msg5)
-    #
-    # msg = msg1 + msg2 + msg3 + msg4 + msg5
-    # print(msg)
-    # magic_num = my_magic_val
-    # command = struct.unpack("<12s", msg[4:16])[0]
-    # length = struct.unpack("<L", msg[16:20])[0]
-    # checksum = struct.unpack("<4s", msg[20:24])[0]
-    # payload_bytes = msg[24:]
-    #
-    # print(validate_msg((magic_num, command, length, checksum, payload_bytes)))
-    # print(parse_tx_msg(msg[24:]))
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.connect(('localhost', 18333))
-    print("beginning handshake")
-    ipv6_test = 0x00000000000000000000FFFF0A000001
-    ipv6_test = ipv6_test.to_bytes(16, 'little')
-    print(type(ipv6_test))
-    print(version_handshake(s, ipv6_test, 18333))
+    genesis_block = make_debug_shit_bytes("01 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 00 00 00 00 3B A3 ED FD  7A 7B 12 B2 7A C7 2C 3E 67 76 8F 61 7F C8 1B C3  88 8A 51 32 3A 9F B8 AA", 64)
+    genesis_block += make_debug_shit_bytes('4B 1E 5E 4A 29 AB 5F 49  FF FF 00 1D 1D AC 2B 7C 01 01 00 00 00 01 00 00  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 00 00 00 00 00 00 FF FF  FF FF 4D 04 FF FF 00 1D', 64)
+    genesis_block += make_debug_shit_bytes('01 04 45 54 68 65 20 54  69 6D 65 73 20 30 33 2F 4A 61 6E 2F 32 30 30 39  20 43 68 61 6E 63 65 6C 6C 6F 72 20 6F 6E 20 62  72 69 6E 6B 20 6F 66 20 73 65 63 6F 6E 64 20 62  61 69 6C 6F 75 74 20 66', 64)
+    genesis_block += make_debug_shit_bytes('6F 72 20 62 61 6E 6B 73  FF FF FF FF 01 00 F2 05 2A 01 00 00 00 43 41 04  67 8A FD B0 FE 55 48 27 19 67 F1 A6 71 30 B7 10  5C D6 A8 28 E0 39 09 A6 79 62 E0 EA 1F 61 DE B6  49 F6 BC 3F 4C EF 38 C4', 64)
+    genesis_block += make_debug_shit_bytes('F3 55 04 E5 1E C1 12 DE  5C 38 4D F7 BA 0B 8D 57 8A 4C 70 2B 6B F1 1D 5F  AC 00 00 00 00', 29)
+
+    print(validate_block(parse_block_msg(genesis_block)))
