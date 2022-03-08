@@ -14,11 +14,11 @@ Txout = namedtuple("Txout", "value pk_script is_spent")
 
 Block = namedtuple("Block", "version prev_block_hash merkle_root timestamp bits nonce Txs hash")
 
-Addr = namedtuple("Addr", "services ipv6 port")
+Addr = namedtuple("Addr", "services ipv6 port")  # ipv6 saved as int
 
 Branch = namedtuple("Branch", "Block children")
 
-block_tree = Branch(None, [])
+block_tree = Branch(Block(0, 0, 0, 0, 0, 0, [], 1), [])
 is_block_tree_used = False
 
 blockchain_path = r"D:\eilon\works\bitcoinShit\blockchain.txt"
@@ -28,9 +28,10 @@ transactions_path = r"D:\eilon\works\bitcoinShit\tx.txt"
 is_transactions_used = False
 
 addresses_path = r"D:\eilon\works\bitcoinShit\addresses.txt"
+
 is_addresses_used = False
 
-safe_length = 6
+safe_length = 4
 my_port = ("node", 18333)
 net = "testnet"
 my_version = 70001
@@ -213,18 +214,22 @@ def parse_addr_msg(payload):
 
 
 def parse_inventory_vector(payload):
-    typ = struct.unpack("<L", payload[:4])
-    hsh = struct.unpack("<32s", payload[4:36])
+    typ = struct.unpack("<L", payload[:4])[0]
+    hsh = struct.unpack("<32s", payload[4:36])[0]
     return typ, hsh
 
 
 def parse_inv_getdata_notfound_msg(payload):
     length, length_of_len = parse_var_len_int(payload)
+    print("got length")
     if length > 50000:
         return None
     inv_lst = []
+    print(length)
     for i in range(length):
-        inv_lst.append(parse_inventory_vector(payload[i * 36 + length_of_len]))
+        print("229 in loop")
+        print(i)
+        inv_lst.append(parse_inventory_vector(payload[i * 36 + length_of_len:]))
     return inv_lst
 
 
@@ -241,6 +246,8 @@ def parse_inv_getdata_notfound_msg(payload):
 def parse_outpoint_msg(payload):
     hasho = struct.unpack("<32s", payload[:32])[0]
     index = struct.unpack("<L", payload[32:36])[0]
+    print("outpoint")
+    print((hasho, index))
     return hasho, index
 
 
@@ -311,7 +318,7 @@ def parse_tx_msg(payload):
     lock_time = struct.unpack("<L", payload[total_offset:total_offset+4])[0]
     hsh = ''
     hsh = hashlib.sha256(hashlib.sha256(payload).digest()).digest()
-    return version_tx, txin, txout, lock_time, hsh, total_offset + 4
+    return txin, txout, lock_time, hsh, total_offset + 4
 
 
 def parse_block_msg(payload):
@@ -333,8 +340,8 @@ def parse_block_msg(payload):
     for i in range(tx_count):
         a_tx = parse_tx_msg(payload[80 + total_offset:])
         print(a_tx)
-        tx.append(a_tx[:5])
-        total_offset += a_tx[5]
+        tx.append(a_tx[:4])
+        total_offset += a_tx[4]
     hsh = hashlib.sha256(hashlib.sha256(payload[:80]).digest()).digest()
     print("block")
     return version_blk, prev_block, merkle_root, timestamp, bits, nonce, hsh, tx
@@ -401,8 +408,11 @@ def create_inventory_vector(typ, hsh):
 
 def create_getdata_msg(inv_vecs):  # gets an array of inv_vec [[typ1,hsh1], .....]
     output = create_var_int(inv_vecs)
+    print("line 405")
     for i in range(len(inv_vecs)):
         output += create_inventory_vector(inv_vecs[i][0], inv_vecs[i][1])
+        print("line 408")
+    print("409")
     return output
 
 
@@ -448,7 +458,7 @@ def validate_msg(msg_tuple):
     if msg_tuple[0] != my_magic_val:
         print(0)
         return False
-    if extract_comm(msg_tuple[1]) not in ["inv", "blocks", "ping", "pong", "version", "verac", "tx"]:  # check later
+    if extract_comm(msg_tuple[1]) not in ["inv", "block", "ping", "pong", "version", "verack", "tx"]:  # check later
         print(1)
         print(extract_comm(msg_tuple[1]))
         return False
@@ -493,8 +503,8 @@ def validate_tx(tx_tuple):  # not coinbase txs, create seperate func for them. v
     return True
 
 
-def validate_block(blk_tuple):
-    hsh_arr = [blk_tuple[7][0][4]]
+def validate_block(blk_tuple):  # "Block", "version prev_block_hash merkle_root timestamp bits nonce hash Txs"
+    hsh_arr = [blk_tuple[7][0][3]]
     fee_sum = 0
     for i in range(len(blk_tuple[7]) - 1):  # validate all txs in block
         if not validate_tx(blk_tuple[7][i + 1]):
@@ -509,7 +519,7 @@ def validate_block(blk_tuple):
             txout_sum += j[0]
         fee_sum += txin_sum - txout_sum
 
-    if blk_tuple[7][0][2][0][0] * 0.00000001 != fee_sum + mining_reward:
+    if blk_tuple[7][0][1][0][0] * 0.00000001 != fee_sum + mining_reward:
         print("miining fee")
         print(blk_tuple[7][0][2][0][0])
         print(fee_sum + mining_reward)
@@ -539,7 +549,10 @@ def blockchain_handle_write(info):  # info = Block object arr
         time.sleep(0.01)
     is_blockchain_used = True
     f = open(blockchain_path, 'w')
-    f.write(json.dumps(info))
+    print("*** writing in blockchain")
+    print(info)
+    print(make_json_ser(info))
+    f.write(json.dumps(make_json_ser(info)))
     f.close()
     is_blockchain_used = False
 
@@ -553,10 +566,12 @@ def blockchain_handle_read():
     f_txt = json.loads(f.read())
     f.close()
     is_blockchain_used = False
-    return f_txt
+    print("*** reading blockchain")
+    print(un_ser_shit(f_txt))
+    return un_ser_shit(f_txt)
 
 
-def addresses_handle_write(info):  # info = address object arr
+def addresses_handle_write(info):  # info = address object arr ip is int
     global is_addresses_used
     while is_addresses_used:
         time.sleep(0.01)
@@ -572,8 +587,11 @@ def addresses_handle_read():
     while is_addresses_used:
         time.sleep(0.01)
     is_addresses_used = True
+    print("584")
     f = open(addresses_path, 'r')
+    print("586")
     f_txt = json.loads(f.read())
+    print("588")
     f.close()
     is_addresses_used = False
     return f_txt
@@ -588,6 +606,36 @@ def transsactions_handle_write(info):
     f.write(json.dumps(info))
     f.close()
     is_transactions_used = False
+
+
+def make_json_ser(heretic_list):
+    print("hey i called make json ser")
+    new_list = []
+    for i in heretic_list:
+        if type(i) == bytes or type(i) == int:
+            print(type('%s' % i))
+            new_list.append('%s' % i)
+
+        elif (type(i) == list or type(i) == tuple) and type(i) != bytes:
+            new_list.append(make_json_ser(i))
+
+        elif type(i) != list and type(i) != tuple and type(i) != bytes:
+            new_list.append(i)
+
+    return new_list
+
+
+def un_ser_shit(heretic_list):
+    new_list = []
+    for i in heretic_list:
+        if type(i) == list or type(i) == tuple:
+            new_list.append(un_ser_shit(i))
+        if type(i) == str and i[0] == 'b':
+            print("line 634 :%s" % i)
+            new_list.append(make_debug_shit_bytes_fixed(i))
+        if type(i) == str and i.isdigit():
+            new_list.append(int(i))
+    return new_list
 
 
 def transsactions_handle_read():
@@ -620,6 +668,9 @@ def tx_update_in_blockchain(new_tx):
             j = old_tx
     blockchain_handle_write(blockchain)
 
+
+def make_tx_seralizable(tx_lst):
+    pass
 
 # -----------------------------------------------------file_handle---------------------------------------------------- #
 # -----------------------------------------------------random_shit---------------------------------------------------- #
@@ -656,7 +707,7 @@ def create_struct_ord(length):
 
 def version_handshake(s, ipvsix, porto):
     try:
-        version_msg = create_version_msg(services, ipvsix, porto, my_version, "", 0)
+        version_msg = create_version_msg(services, ipvsix, porto, my_version, "", 0)  # R --> L version msg
         print("created version msg")
         the_msg = create_msg(version_msg, "version")
         print("created msg")
@@ -665,7 +716,7 @@ def version_handshake(s, ipvsix, porto):
         print(e)
         print("went wrong in line 614")
         return -1
-    msg_tuple = parse_msg(s)
+    msg_tuple = parse_msg(s)  # L --> R version msg
     print("got msg")
     if len(msg_tuple) == 0:
         print("line 627")
@@ -683,33 +734,51 @@ def version_handshake(s, ipvsix, porto):
         return 0
     pref_version = min(my_version, version_tuple[0])
     print("line 639")
-    verac_tuple = parse_msg(s)
+
+    try:
+        print("line 649")
+        s.sendall(create_msg(struct.pack("x"), "verack"))  # R --> L verack msg
+    except Exception as e:
+        print(e)
+        return -2
+
+    verac_tuple = parse_msg(s)  # L --> R verack msg
     print("line 641")
     if len(verac_tuple) == 0:
         print("line 643")
         return 0
-    if (not validate_msg(verac_tuple)) or verac_tuple[1] != "verack":
+    if (not validate_msg(verac_tuple)) or extract_comm(verac_tuple[1]) != "verack":
+        print(validate_msg(verac_tuple))
+        print(extract_comm(verac_tuple[1]))
         print("line 646")
         return 0
-    try:
-        print("line 649")
-        s.sendall(create_msg(struct.pack("x"), "verack"))
-    except Exception as e:
-        print(e)
-        return -2
-    addresses = addresses_handle_read()
-    addresses.append(Addr(version_tuple[1], ipvsix, porto))
-    addresses_handle_write(addresses)
+    # addresses = addresses_handle_read()
+    # print("737")
+    # print(version_tuple[1])
+    # addresses.append(Addr(version_tuple[1], '%s' % ipvsix, porto))
+    # print("739")
+    # addresses_handle_write(addresses)
+    # print("741")
     return pref_version
 
 
 def create_block_locator_hash():
     block_chain = blockchain_handle_read()
+    print(block_chain)
     blk_loc_hsh = []
-    for i in range(int(len(block_chain) / 10)):
-        blk_loc_hsh.append(block_chain[-10 * i - 1:-(10 * i)].hash)
-    if blk_loc_hsh[len(blk_loc_hsh) - 1] != block_chain[0].hash:
-        blk_loc_hsh.append(block_chain[0].hash)
+    print("block locator hash &&&&&&&&&&&&&&&")
+    print(block_chain)
+
+    len_block_chain = len(block_chain)
+    if len_block_chain == 0:
+        return []
+    print(len(block_chain[0]))
+    for i in range(len_block_chain):  # change values later
+        if i % 10 == 0:
+            print(i)
+            blk_loc_hsh.append(block_chain[-i][7])
+    if not block_chain[0][7] in blk_loc_hsh:
+        blk_loc_hsh.append(block_chain[0][7])
     return blk_loc_hsh
 
 
@@ -726,38 +795,54 @@ def divide_tuple_inv(inv_tuple):
 def init_block_download(s, agreed_version):
     flag = True
     while flag:
-        s.sendall(create_msg(create_getblocks(agreed_version, create_block_locator_hash(), 0), "getblocks"))
+        s.sendall(create_msg(create_getblocks(agreed_version, create_block_locator_hash(), 0x0.to_bytes(32, 'big')), "getblocks"))
+        print("sent getblocks msg")
         msg_tuple = parse_msg(s)
         if len(msg_tuple) == 0:
+            print("744")
+            print(msg_tuple)
             return False
-        if (not validate_msg(msg_tuple)) or msg_tuple[1] != "inv":
+        if (not validate_msg(msg_tuple)) or extract_comm(msg_tuple[1]) != "inv":
+            print("747")
             return False
         try:
             inv_tuple = parse_inv_getdata_notfound_msg(msg_tuple[4])
+            print("got inv")
         except Exception as e:
+            print("752")
             print(e)
             return False
         if len(inv_tuple) == 0:
             break
+        print("764")
         for i in divide_tuple_inv(inv_tuple):
+            print(i)
+            print("sent getdata msgs")
             s.sendall(create_msg(create_getdata_msg(i), "getdata"))
             for j in range(len(i)):
+                print("got a blockmsg")
+                print(j)
                 msg_tuple = parse_msg(s)
                 if len(msg_tuple) == 0:
+                    print("762")
                     return False
-                if (not validate_msg(msg_tuple)) or msg_tuple[1] != "block":
+                if (not validate_msg(msg_tuple)) or extract_comm(msg_tuple[1]) != "block":
+                    print("765")
                     return False
                 try:
                     block_tuple = parse_block_msg(msg_tuple[4])
                 except Exception as e:
+                    print("770")
                     print(e)
                     return False
                 if validate_block(block_tuple):
+                    print("saving block")
                     b1 = Block(block_tuple[0], block_tuple[1], block_tuple[2], block_tuple[3], block_tuple[4],
                                block_tuple[5], block_tuple[7], block_tuple[6])
                     block_chain = blockchain_handle_read()
-                    block_chain.append(b1)
+                    block_chain.append(make_json_ser(b1))
                     blockchain_handle_write(block_chain)
+    print("finished")
     return True
 
 
@@ -765,14 +850,19 @@ def add_block_to_tree(block_tuple):
     if not validate_block(block_tuple):
         return False
     cur_b = Branch(Block(block_tuple[0], block_tuple[1], block_tuple[2], block_tuple[3], block_tuple[4], block_tuple[5],
-                         block_tuple[7], block_tuple[6]), None)
+                         block_tuple[7], block_tuple[6]), [])
     global is_block_tree_used
     while is_block_tree_used:
         time.sleep(0.01)
     is_block_tree_used = True
     father = find_father(block_tree, cur_b.Block.prev_block_hash)
+    if father is None:
+        is_block_tree_used = False
+        return False
+    print(father)
     for i in father.children:
         if i.Block.hash == cur_b.Block.hash:
+            print("dup")
             is_block_tree_used = False
             return False
     father.children.append(cur_b)
@@ -877,7 +967,34 @@ def make_debug_shit_bytes(stri, num_of_bytes):
     for i in stri:
         if i in ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F']:
             byti += i
-    return int(byti, 16).to_bytes(num_of_bytes, 'big')
+        elif not i in ['b', 'x', '\\', ' ']:
+            print(str(hex(ord(i)))[:2])
+            byti += str(hex(ord(i)))[2:]
+    length = (len(byti)-2)/2
+    # print("converting this int %s to bytes in line 966" % int(byti, 16))
+    print("his length is %s" % length)
+    print(byti)
+    return int(byti, 16).to_bytes(int(length), 'big')
+
+
+def make_debug_shit_bytes_fixed(stri):
+    starr = stri[2:-1].split(r"\x")
+    byti = "0x"
+    for i in starr:
+        lengthi = len(i)
+        if lengthi == 1:
+            byti += str(hex(ord(i)))[2:]
+        elif lengthi == 2:
+            byti += i
+        elif lengthi > 2:
+            byti += i[:2]
+            for j in i[2:]:
+                byti += str(hex(ord(j)))[2:]
+
+    length = (len(byti)-2)/2
+    return int(byti, 16).to_bytes(int(length), 'big')
+
+
 
 
 # -----------------------------------------------------random_shit---------------------------------------------------- #
@@ -891,4 +1008,16 @@ if __name__ == '__main__':
     genesis_block += make_debug_shit_bytes('6F 72 20 62 61 6E 6B 73  FF FF FF FF 01 00 F2 05 2A 01 00 00 00 43 41 04  67 8A FD B0 FE 55 48 27 19 67 F1 A6 71 30 B7 10  5C D6 A8 28 E0 39 09 A6 79 62 E0 EA 1F 61 DE B6  49 F6 BC 3F 4C EF 38 C4', 64)
     genesis_block += make_debug_shit_bytes('F3 55 04 E5 1E C1 12 DE  5C 38 4D F7 BA 0B 8D 57 8A 4C 70 2B 6B F1 1D 5F  AC 00 00 00 00', 29)
 
-    print(validate_block(parse_block_msg(genesis_block)))
+    print(add_block_to_tree((0, 1, 0, 0, 0, 0, 2, [])))
+    print(add_to_blockchain())
+    print(add_block_to_tree((0, 2, 0, 0, 0, 0, 3, [])))
+    print(add_to_blockchain())
+    print(add_block_to_tree((0, 3, 0, 0, 0, 0, 4, [])))
+    print(add_to_blockchain())
+    print(add_block_to_tree((0, 4, 0, 0, 0, 0, 5, [])))
+    print(add_to_blockchain())
+    print(add_block_to_tree((0, 5, 0, 0, 0, 0, 6, [])))
+    print(add_to_blockchain())
+    print(add_block_to_tree((0, 1, 0, 0, 0, 0, 21, [])))
+    print(add_to_blockchain())
+
