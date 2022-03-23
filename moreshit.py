@@ -3,7 +3,10 @@ import time
 import json
 import struct
 import digital_wallet
+import requests as req
 
+my_address = "3EuJcabTdjEiMpdtxPtDUeVt6RUdqVGTzB"
+now = time.time()
 
 def make_debug_shit_bytes_fixed(stri):
     starr = stri[2:-1].split(r"\x")
@@ -24,4 +27,7 @@ def make_debug_shit_bytes_fixed(stri):
 
 
 if __name__ == '__main__':
-    print("989877654573697".isdigit())
+    for i in range(10):
+        print("https://www.blockchain.com/btc/block/00000000000000000001f218ce346b2a7105de260632ea5af171604cc9f2dd69?" + str(i))
+
+

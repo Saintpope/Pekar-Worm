@@ -1,21 +1,86 @@
-
-import socket
 import time
-import json
-import struct
-import digital_wallet
+
+import requests
+from bs4 import BeautifulSoup as bs
+
+url_tx = "https://www.blockchain.com/btc/tx/936b1b51ba83f1fffce58c010f1591f208a610cda70d2a7cc26cad396202130c"
+
+key = ['@', '&', '#', '$', '%', '!', '^', '*', '-', '+', '_', '=', '`', '~', '[', '.', ']', '{', '}', '>', '<', '?', ',', ';', '/', '|']
+
+
+def get_first_block():
+    req = requests.get("https://www.blockchain.com/btc/blocks?page=1")
+    soup = bs(req.text, 'html.parser')
+    first_block = soup.find(name="a", attrs={'class', 'sc-1r996ns-0 fLwyDF sc-1tbyx6t-1 kCGMTY iklhnl-0 eEewhk'})
+    return "https://www.blockchain.com" + first_block.attrs.get('href')
+    # print([a.text for a in amount_of_btc if "sc-1ryi78w-0 cILyoi sc-16b9dsl-1 ZwupP u3ufsr-0 eQTRKC" in str(a)])
+    # print([amount.text for amount in amount_of_btc])
+    # amount = [amount for amount in amount_of_btc if amount.text == "Value"][0]
+    # print(amount.find(name="div"))
+    # print(type(amount))
+    # print(amount.parent.find_all(attrs={"opacity", 1}))
+    # print(amount)
+
+
+def get_tx_hashes(url):
+    addr_arr = []
+    try:
+        i = 1
+        while True:
+            req = requests.get(url)
+            soup = bs(req.text, 'html.parser')
+            tx_in_blk = soup.find_all(name="a",
+                                      attrs={'class', 'sc-1r996ns-0 fLwyDF sc-1tbyx6t-1 kCGMTY iklhnl-0 eEewhk'})
+            tx_in_blk = [tx.text for tx in tx_in_blk if len(tx.text) == 64]
+            if len(tx_in_blk) == 0:
+                break
+            print(tx_in_blk)
+            for j in tx_in_blk:
+                addr_arr.append("https://www.blockchain.com/btc/tx/" + j)
+            i += 1
+            print(i)
+
+    except Exception as e:
+        print(e)
+    return addr_arr
+    # req = requests.get(url_blk)
+    # soup = bs(req.text, 'html.parser')
+    # tx_in_blk = soup.find_all(name="a", attrs={'class', 'sc-1r996ns-0 fLwyDF sc-1tbyx6t-1 kCGMTY iklhnl-0 eEewhk'})
+    # tx_in_blk = [tx.text for tx in tx_in_blk if len(tx.text) == 64]
+    # print(tx_in_blk)
+
+
+def check_single_tx(my_pk, victim_pk, amount, url):
+    req = requests.get(url)
+    soup = bs(req.text, 'html.parser')
+    input_addr = soup.find_all(name="div", attrs={'class', 'sc-1tbyx6t-0'})
+    input_addr = [addr.text for addr in input_addr]
+    print(input_addr)
+    if (len(input_addr) != 2) or (my_pk not in input_addr) or (victim_pk not in input_addr):
+        return False
+    output = soup.find_all(name="span", attrs={'class', 'sc-1ryi78w-0 cILyoi sc-16b9dsl-1 ZwupP u3ufsr-0 eQTRKC'})
+    output = [out.text for out in output if "BTC" in out.text]
+    print(output)
+    if float(output[1][:-5])-float(output[0][:-5]) < amount:
+        return False
+    return True
+
+
+def check_if_paid(my_pk, victim_pk, amount):
+    tx_hsh = get_tx_hashes(get_first_block())
+    print(tx_hsh)
+    for i in tx_hsh:
+        if check_single_tx(my_pk, victim_pk, amount, i):
+            return True
+    return False
+
 
 if __name__ == '__main__':
-    genesis_block = digital_wallet.make_debug_shit_bytes("01 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 00 00 00 00 3B A3 ED FD  7A 7B 12 B2 7A C7 2C 3E 67 76 8F 61 7F C8 1B C3  88 8A 51 32 3A 9F B8 AA", 64)
-    genesis_block += digital_wallet.make_debug_shit_bytes('4B 1E 5E 4A 29 AB 5F 49  FF FF 00 1D 1D AC 2B 7C 01 01 00 00 00 01 00 00  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 00 00 00 00 00 00 FF FF  FF FF 4D 04 FF FF 00 1D', 64)
-    genesis_block += digital_wallet.make_debug_shit_bytes('01 04 45 54 68 65 20 54  69 6D 65 73 20 30 33 2F 4A 61 6E 2F 32 30 30 39  20 43 68 61 6E 63 65 6C 6C 6F 72 20 6F 6E 20 62  72 69 6E 6B 20 6F 66 20 73 65 63 6F 6E 64 20 62  61 69 6C 6F 75 74 20 66', 64)
-    genesis_block += digital_wallet.make_debug_shit_bytes('6F 72 20 62 61 6E 6B 73  FF FF FF FF 01 00 F2 05 2A 01 00 00 00 43 41 04  67 8A FD B0 FE 55 48 27 19 67 F1 A6 71 30 B7 10  5C D6 A8 28 E0 39 09 A6 79 62 E0 EA 1F 61 DE B6  49 F6 BC 3F 4C EF 38 C4', 64)
-    genesis_block += digital_wallet.make_debug_shit_bytes('F3 55 04 E5 1E C1 12 DE  5C 38 4D F7 BA 0B 8D 57 8A 4C 70 2B 6B F1 1D 5F  AC 00 00 00 00', 29)
-    new_block = digital_wallet.parse_block_msg(genesis_block)
-    print(new_block)
-
-
-
-
-
+    flag = False
+    while not flag:
+        try:
+            flag = check_if_paid(0, 0, 0)
+        except Exception as e:
+            print(e)
+        time.sleep(600)
 
