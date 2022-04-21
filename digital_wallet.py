@@ -36,7 +36,7 @@ my_port = ("node", 18333)
 net = "testnet"
 my_version = 70001
 services = 1
-my_ipv6 = 0x00000000000000000000FFFF0A000001.to_bytes(16, 'big')
+my_ipv6 = 0x210abd796c9816b.to_bytes(16, 'big')
 mining_reward = 50
 
 magic_val = {"main": 0xD9B4BEF9, "testnet": 0xDAB5BFFA, "signet": 0x40CF030A, "namecoin": 0xFEB4BEF9}
@@ -132,6 +132,7 @@ def byte_arr_to_str(arr):
 def parse_msg(soc):
     try:
         msg = soc.recv(24)
+        print(msg)
         magic_num = struct.unpack("<L", msg[:4])[0]
         command = struct.unpack("<12s", msg[4:16])[0]
         length = struct.unpack("<L", msg[16:20])[0]
@@ -363,6 +364,7 @@ def parse_reject_msg(payload):
 
 
 def create_net_addr(is_for_version, serv, ipvsix, porto):
+    print("net_addr")
     if is_for_version:
         return struct.pack('<Q16sH', serv, ipvsix, porto)
     return struct.pack('<LQ16sH', int(time.time()), serv, ipvsix, porto)
@@ -995,6 +997,11 @@ def make_debug_shit_bytes_fixed(stri):
     return int(byti, 16).to_bytes(int(length), 'big')
 
 
+def convert_ip_address(ip_address):
+    ip_lst = ip_address.split(".")
+    return struct.pack("xxxxxxxxxxxx") + struct.pack("B", int(ip_lst[0])) + struct.pack("B", int(ip_lst[1])) + struct.pack("B", int(ip_lst[2])) + struct.pack("B", int(ip_lst[3]))
+
+
 
 
 # -----------------------------------------------------random_shit---------------------------------------------------- #
@@ -1002,22 +1009,29 @@ def make_debug_shit_bytes_fixed(stri):
 
 
 if __name__ == '__main__':
-    genesis_block = make_debug_shit_bytes("01 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 00 00 00 00 3B A3 ED FD  7A 7B 12 B2 7A C7 2C 3E 67 76 8F 61 7F C8 1B C3  88 8A 51 32 3A 9F B8 AA", 64)
-    genesis_block += make_debug_shit_bytes('4B 1E 5E 4A 29 AB 5F 49  FF FF 00 1D 1D AC 2B 7C 01 01 00 00 00 01 00 00  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 00 00 00 00 00 00 FF FF  FF FF 4D 04 FF FF 00 1D', 64)
-    genesis_block += make_debug_shit_bytes('01 04 45 54 68 65 20 54  69 6D 65 73 20 30 33 2F 4A 61 6E 2F 32 30 30 39  20 43 68 61 6E 63 65 6C 6C 6F 72 20 6F 6E 20 62  72 69 6E 6B 20 6F 66 20 73 65 63 6F 6E 64 20 62  61 69 6C 6F 75 74 20 66', 64)
-    genesis_block += make_debug_shit_bytes('6F 72 20 62 61 6E 6B 73  FF FF FF FF 01 00 F2 05 2A 01 00 00 00 43 41 04  67 8A FD B0 FE 55 48 27 19 67 F1 A6 71 30 B7 10  5C D6 A8 28 E0 39 09 A6 79 62 E0 EA 1F 61 DE B6  49 F6 BC 3F 4C EF 38 C4', 64)
-    genesis_block += make_debug_shit_bytes('F3 55 04 E5 1E C1 12 DE  5C 38 4D F7 BA 0B 8D 57 8A 4C 70 2B 6B F1 1D 5F  AC 00 00 00 00', 29)
+    # genesis_block = make_debug_shit_bytes("01 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 00 00 00 00 3B A3 ED FD  7A 7B 12 B2 7A C7 2C 3E 67 76 8F 61 7F C8 1B C3  88 8A 51 32 3A 9F B8 AA", 64)
+    # genesis_block += make_debug_shit_bytes('4B 1E 5E 4A 29 AB 5F 49  FF FF 00 1D 1D AC 2B 7C 01 01 00 00 00 01 00 00  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 00 00 00 00 00 00 FF FF  FF FF 4D 04 FF FF 00 1D', 64)
+    # genesis_block += make_debug_shit_bytes('01 04 45 54 68 65 20 54  69 6D 65 73 20 30 33 2F 4A 61 6E 2F 32 30 30 39  20 43 68 61 6E 63 65 6C 6C 6F 72 20 6F 6E 20 62  72 69 6E 6B 20 6F 66 20 73 65 63 6F 6E 64 20 62  61 69 6C 6F 75 74 20 66', 64)
+    # genesis_block += make_debug_shit_bytes('6F 72 20 62 61 6E 6B 73  FF FF FF FF 01 00 F2 05 2A 01 00 00 00 43 41 04  67 8A FD B0 FE 55 48 27 19 67 F1 A6 71 30 B7 10  5C D6 A8 28 E0 39 09 A6 79 62 E0 EA 1F 61 DE B6  49 F6 BC 3F 4C EF 38 C4', 64)
+    # genesis_block += make_debug_shit_bytes('F3 55 04 E5 1E C1 12 DE  5C 38 4D F7 BA 0B 8D 57 8A 4C 70 2B 6B F1 1D 5F  AC 00 00 00 00', 29)
+    #
+    # print(add_block_to_tree((0, 1, 0, 0, 0, 0, 2, [])))
+    # print(add_to_blockchain())
+    # print(add_block_to_tree((0, 2, 0, 0, 0, 0, 3, [])))
+    # print(add_to_blockchain())
+    # print(add_block_to_tree((0, 3, 0, 0, 0, 0, 4, [])))
+    # print(add_to_blockchain())
+    # print(add_block_to_tree((0, 4, 0, 0, 0, 0, 5, [])))
+    # print(add_to_blockchain())
+    # print(add_block_to_tree((0, 5, 0, 0, 0, 0, 6, [])))
+    # print(add_to_blockchain())
+    # print(add_block_to_tree((0, 1, 0, 0, 0, 0, 21, [])))
+    # print(add_to_blockchain())
+    disired_address = "89.138.132.18"
 
-    print(add_block_to_tree((0, 1, 0, 0, 0, 0, 2, [])))
-    print(add_to_blockchain())
-    print(add_block_to_tree((0, 2, 0, 0, 0, 0, 3, [])))
-    print(add_to_blockchain())
-    print(add_block_to_tree((0, 3, 0, 0, 0, 0, 4, [])))
-    print(add_to_blockchain())
-    print(add_block_to_tree((0, 4, 0, 0, 0, 0, 5, [])))
-    print(add_to_blockchain())
-    print(add_block_to_tree((0, 5, 0, 0, 0, 0, 6, [])))
-    print(add_to_blockchain())
-    print(add_block_to_tree((0, 1, 0, 0, 0, 0, 21, [])))
-    print(add_to_blockchain())
+    blockchain_handle_write([])
+    print(convert_ip_address(disired_address))
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.connect((disired_address, 8333))
+        socket_handler(sock, convert_ip_address(disired_address), 8333)
 
