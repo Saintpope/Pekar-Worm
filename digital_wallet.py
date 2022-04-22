@@ -40,7 +40,7 @@ my_ipv6 = 0x210abd796c9816b.to_bytes(16, 'big')
 mining_reward = 50
 
 magic_val = {"main": 0xD9B4BEF9, "testnet": 0xDAB5BFFA, "signet": 0x40CF030A, "namecoin": 0xFEB4BEF9}
-my_magic_val = 0xDAB5BFFA
+my_magic_val = 0xD9B4BEF9
 command_lst = ["version", "verack", "addr", "inv", "getdata", "notfound", "getblocks", "getheaders", "tx", "block", ""]
 
 
@@ -460,12 +460,15 @@ def validate_msg(msg_tuple):
     if msg_tuple[0] != my_magic_val:
         print(0)
         return False
-    if extract_comm(msg_tuple[1]) not in ["inv", "block", "ping", "pong", "version", "verack", "tx"]:  # check later
+    if extract_comm(msg_tuple[1]) not in ["inv", "block", "ping", "pong", "version", "verack", "tx", "addr", "getheaders", "alert"]:  # check later
         print(1)
         print(extract_comm(msg_tuple[1]))
         return False
     if msg_tuple[2] != len(msg_tuple[4]):
         print(2)
+        print(msg_tuple[2])
+        print(len(msg_tuple[4]))
+        print(msg_tuple[4])
         return False
     if msg_tuple[3] != hashlib.sha256(hashlib.sha256(msg_tuple[4]).digest()).digest()[:4]:
         print("validate msg")
@@ -804,6 +807,12 @@ def init_block_download(s, agreed_version):
             print("744")
             print(msg_tuple)
             return False
+        print("807")
+        while extract_comm(msg_tuple[1]) != "inv":
+            print("809")
+            waiting_for_inv(s, msg_tuple)
+            msg_tuple = parse_msg(s)
+        print("812")
         if (not validate_msg(msg_tuple)) or extract_comm(msg_tuple[1]) != "inv":
             print("747")
             return False
@@ -942,9 +951,9 @@ def socket_handler(s, ipvsix, porto):
             msg_tuple = parse_msg(s)
             if not validate_msg(msg_tuple):
                 s.sendall(create_msg(create_reject_msg(msg_tuple[1], 0x10, "REJECT_INVALID", ""), "reject"))
-            if msg_tuple[1] == "ping":
+            if extract_comm(msg_tuple[1]) == "ping":
                 s.sendall(create_msg("", "pong"))
-            if msg_tuple[1] == "inv":
+            if extract_comm(msg_tuple[1]) == "inv":
                 inv_list = parse_inv_getdata_notfound_msg(msg_tuple[4])
                 req_lst = []
                 for i in inv_list:
@@ -953,7 +962,7 @@ def socket_handler(s, ipvsix, porto):
                 s.sendall(create_msg(create_getdata_msg(req_lst), "getdata"))
                 for i in req_lst:
                     msg_tuple = parse_msg(s)
-                    if (not validate_msg(msg_tuple)) or msg_tuple[1] == "block":
+                    if (not validate_msg(msg_tuple)) or extract_comm(msg_tuple[1]) == "block":
                         s.sendall(create_msg(create_reject_msg(msg_tuple[1], 0x10, "REJECT_INVALID", ""), "reject"))
                     block_tuple = parse_block_msg(msg_tuple[4])
                     if not add_block_to_tree(block_tuple):
@@ -1002,7 +1011,17 @@ def convert_ip_address(ip_address):
     return struct.pack("xxxxxxxxxxxx") + struct.pack("B", int(ip_lst[0])) + struct.pack("B", int(ip_lst[1])) + struct.pack("B", int(ip_lst[2])) + struct.pack("B", int(ip_lst[3]))
 
 
-
+def waiting_for_inv(s, msg_tuple):
+    try:
+        if not validate_msg(msg_tuple):
+            s.sendall(create_msg(create_reject_msg(extract_comm(msg_tuple[1]), 0x10, "REJECT_INVALID", ""), "reject"))
+        elif extract_comm(msg_tuple[1]) == "ping":
+            s.sendall(create_msg(msg_tuple[4], "pong"))
+        else:
+            s.sendall(create_msg(create_reject_msg(extract_comm(msg_tuple[1]), 0x40, "REJECT_NONSTANDARD", ""), "reject"))
+    except Exception as e:
+        print(e)
+        print("1018")
 
 # -----------------------------------------------------random_shit---------------------------------------------------- #
 # inferkit

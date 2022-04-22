@@ -185,4 +185,6 @@ def do_not_fucking_call_this_keyboard_disable():
 
 
 if __name__ == "__main__":
-    pass
+    driver = open_chrome()
+    print(get_victims(driver))
+    send_gmail("eilon.ko@gmail.com", "test", "test", driver)

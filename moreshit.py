@@ -8,6 +8,7 @@ import requests as req
 my_address = "3EuJcabTdjEiMpdtxPtDUeVt6RUdqVGTzB"
 now = time.time()
 
+
 def make_debug_shit_bytes_fixed(stri):
     starr = stri[2:-1].split(r"\x")
     byti = "0x"
@@ -27,7 +28,15 @@ def make_debug_shit_bytes_fixed(stri):
 
 
 if __name__ == '__main__':
-    for i in range(10):
-        print("https://www.blockchain.com/btc/block/00000000000000000001f218ce346b2a7105de260632ea5af171604cc9f2dd69?" + str(i))
+    HOST = "127.0.0.1"  # Standard loopback interface address (localhost)
+    PORT = 65432  # Port to listen on (non-privileged ports are > 1023)
 
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind((HOST, PORT))
+        s.listen()
+        conn, addr = s.accept()
+        with conn:
+            print(f"Connected by {addr}")
+            print(digital_wallet.version_handshake(conn, digital_wallet.convert_ip_address(HOST), 65432))
+            print("done")
 
