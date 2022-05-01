@@ -138,6 +138,8 @@ def parse_msg(soc):
         length = struct.unpack("<L", msg[16:20])[0]
         checksum = struct.unpack("<4s", msg[20:24])[0]
         payload_bytes = soc.recv(length)
+        while len(payload_bytes) < length:
+            payload_bytes += soc.recv(length-len(payload_bytes))
         return magic_num, command, length, checksum, payload_bytes
     except Exception as e:
         print(e)
@@ -161,11 +163,15 @@ def parse_net_addr(payload, is_version, version_net):  # payload is sequence of 
 def parse_var_len_int(payload):  # return length of field
     if payload[0] < 253:
         return payload[0], 1
-    if int(struct.unpack("B", payload[0])[0]) == 253:
+    print("length messuring contest")
+    if payload[0] == 253:
+        print("shit no.1")
         return struct.unpack("<H", payload[1:3])[0], 3
-    if int(struct.unpack("B", payload[0])[0]) == 254:
+    if payload[0] == 254:
+        print("shit no.2")
         return struct.unpack("<L", payload[1:5])[0], 5
-    if int(struct.unpack("B", payload[0])[0]) == 255:
+    if payload[0] == 255:
+        print("shit no.3")
         return struct.unpack("<Q", payload[1:9])[0], 9
 
 
@@ -816,6 +822,7 @@ def init_block_download(s, agreed_version):
         if (not validate_msg(msg_tuple)) or extract_comm(msg_tuple[1]) != "inv":
             print("747")
             return False
+        print("825")
         try:
             inv_tuple = parse_inv_getdata_notfound_msg(msg_tuple[4])
             print("got inv")
@@ -952,7 +959,7 @@ def socket_handler(s, ipvsix, porto):
             if not validate_msg(msg_tuple):
                 s.sendall(create_msg(create_reject_msg(msg_tuple[1], 0x10, "REJECT_INVALID", ""), "reject"))
             if extract_comm(msg_tuple[1]) == "ping":
-                s.sendall(create_msg("", "pong"))
+                s.sendall(create_msg(msg_tuple[4], "pong"))
             if extract_comm(msg_tuple[1]) == "inv":
                 inv_list = parse_inv_getdata_notfound_msg(msg_tuple[4])
                 req_lst = []
@@ -989,6 +996,9 @@ def make_debug_shit_bytes(stri, num_of_bytes):
 
 
 def make_debug_shit_bytes_fixed(stri):
+    print("------------------------")
+    print(stri)
+    print("------------------------")
     starr = stri[2:-1].split(r"\x")
     byti = "0x"
     for i in starr:
