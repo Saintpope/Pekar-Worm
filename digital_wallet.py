@@ -1001,18 +1001,34 @@ def make_debug_shit_bytes_fixed(stri):
     print("------------------------")
     starr = stri[2:-1].split(r"\x")
     byti = "0x"
+
     for i in starr:
         lengthi = len(i)
         if lengthi == 1:
             byti += str(hex(ord(i)))[2:]
         elif lengthi == 2:
-            byti += i
+            try:
+                temp = int(i, 16).to_bytes(1, 'big')
+                byti += i
+            except Exception as e:
+                print(e)
+                print("1015")
+                byti += str(hex(ord(i[0])))[2:]
+                byti += str(hex(ord(i[1])))[2:]
         elif lengthi > 2:
-            byti += i[:2]
+            try:
+                temp = int(i, 16).to_bytes(1, 'big')
+                byti += i
+            except Exception as e:
+                print(e)
+                print("1015")
+                byti += str(hex(ord(i[0])))[2:]
+                byti += str(hex(ord(i[1])))[2:]
             for j in i[2:]:
                 byti += str(hex(ord(j)))[2:]
 
     length = (len(byti)-2)/2
+    print(byti)
     return int(byti, 16).to_bytes(int(length), 'big')
 
 
