@@ -8,6 +8,9 @@ from collections import namedtuple
 import json
 import bitcoin
 
+my_priv = bitcoin.sha256("I like Donald Trump so much. I would like to buy him an orange")
+my_pub = bitcoin.privtopub(my_priv)
+
 Tx = namedtuple("Tx", "Txins Txouts witnessData locktime is_valid hash")
 Txin = namedtuple("Txin", "hash index sig sequence")
 Txout = namedtuple("Txout", "value pk_script is_spent")
@@ -44,86 +47,6 @@ my_magic_val = 0xD9B4BEF9
 command_lst = ["version", "verack", "addr", "inv", "getdata", "notfound", "getblocks", "getheaders", "tx", "block", ""]
 
 
-def get_blocks():  # listen and return broadcasted blocks
-    pass
-
-
-def is_valid(previous, proof_of_work):  # gets previous block and check if the block is valid
-    # check if hash is the same
-    # validate proof of work
-    # check signatures
-    # check overspending
-    pass
-
-
-def is_sig_valid(msg, pubkey, sign):
-    if msg == "bruh":
-        return False
-    return True
-
-
-def blockchain_engine(block):  # add blocks to block chain
-    pass
-
-
-class Transaction:
-    def __init__(self, to, sender, amount, sign, transactions):
-        self.to = to
-        self.sender = sender
-        self.amount = amount
-        self.sign = sign
-        self.transactions = transactions
-        self.valid = self.is_valid()
-
-    def is_valid(self):
-        sumo = 0
-        if not is_sig_valid(self.to_string(), self.sender, self.sign):
-            return False
-        for i in self.transactions:
-            if not i.is_valid():
-                return False
-            if i.to == self.sender:
-                sumo += i.amount
-        if sumo < self.amount:
-            return False
-
-    def to_string(self):
-        return str(self.to) + str(self.sender) + str(self.amount)
-
-
-class BlockChain:
-    def __init__(self, header, transactions, proof_of_work):
-        self.header = header
-        self.transactions = transactions
-        self.proof_of_work = proof_of_work
-        self.children = []
-        self.is_valid = False
-
-    def len_longest_chain(self):
-        if len(self.children) == 0:
-            return None, 1
-        maxi = 0
-        maxi_block = None
-        for i in self.children:
-            length = 1 + i.len_longest_chain()[1]
-            if length > maxi:
-                maxi = length
-                maxi_block = i
-        return maxi_block, maxi
-
-    def is_valid(self):
-        for i in self.transactions:
-            if not i.is_valid():
-                return False
-        if True:
-            pass
-
-
-def byte_arr_to_str(arr):
-    this_string = ""
-    for i in arr:
-        this_string += str(i)
-    return this_string
 
 
 # --------------------------------------------------------parses------------------------------------------------------ #
@@ -486,26 +409,33 @@ def validate_msg(msg_tuple):
 
 
 def validate_tx(tx_tuple):  # not coinbase txs, create seperate func for them. validation require whole block
+    print("-------------------validating tx----------------------------")
     sum_output = 0
-    for i in tx_tuple[2]:
+    for i in tx_tuple[1]:
         sum_output += i[0]
 
     sum_input = 0
     spent_tx = []
-    for i in tx_tuple[1]:
+    for i in tx_tuple[0]:
         itx = search_tx_by_hash_in_blockchain(i[0][0])
+        itx = Tx(itx[0], itx[1], itx[2], itx[3], itx[4], itx[5])
         if itx is None:
+            print("-------------------validating tx failed----------------------------")
             return False
         if not itx.is_valid:
+            print("-------------------validating tx failed----------------------------")
             return False
         if itx.Txouts[i[0][0][1]].is_spent:
+            print("-------------------validating tx failed----------------------------")
             return False
         if not bitcoin.ecdsa_verify(itx.hash, i[1], itx.Txouts[i[0][1]].pk_script):
+            print("-------------------validating tx failed----------------------------")
             return False
         sum_input += itx.Txouts[i[0][1]][0]
         spent_tx.append((itx, i[0][1]))
 
     if sum_input < sum_output:
+        print("-------------------validating tx failed----------------------------")
         return False
 
     # for i in spent_tx: put in block generator
@@ -518,15 +448,17 @@ def validate_block(blk_tuple):  # "Block", "version prev_block_hash merkle_root 
     hsh_arr = [blk_tuple[7][0][3]]
     fee_sum = 0
     for i in range(len(blk_tuple[7]) - 1):  # validate all txs in block
+        print("530 is cool")
         if not validate_tx(blk_tuple[7][i + 1]):
             return False
         hsh_arr.append(blk_tuple[7][i + 1][4])
         txin_sum = 0
-        for j in blk_tuple[7][1]:
+        for j in blk_tuple[7][i+1][0]:
             itx = search_tx_by_hash(j[0][0])
+            itx = Tx(itx[0], itx[1], itx[2], itx[3], itx[4], itx[5])
             txin_sum += itx.Txouts[j[0][1]][0]
         txout_sum = 0
-        for j in blk_tuple[7][2]:
+        for j in blk_tuple[7][i+1][1]:
             txout_sum += j[0]
         fee_sum += txin_sum - txout_sum
 
@@ -541,10 +473,11 @@ def validate_block(blk_tuple):  # "Block", "version prev_block_hash merkle_root 
         return False
 
     blk_hash_int = int.from_bytes(blk_tuple[6], 'little')
-    if blk_hash_int > blk_tuple[4] * 2**(8*(0x1b - 3)):
+    if blk_hash_int > get_diff(blk_tuple[4]):
         print("proof of work")
         print(blk_hash_int)
         print(blk_tuple[6])
+        print(blk_tuple[4])
         print(blk_tuple[4] * 2**(8*(0x1b - 3)))
         return False
     return True
@@ -561,8 +494,6 @@ def blockchain_handle_write(info):  # info = Block object arr
     is_blockchain_used = True
     f = open(blockchain_path, 'w')
     print("*** writing in blockchain")
-    print(info)
-    print(make_json_ser(info))
     f.write(json.dumps(make_json_ser(info)))
     f.close()
     is_blockchain_used = False
@@ -578,7 +509,7 @@ def blockchain_handle_read():
     f.close()
     is_blockchain_used = False
     print("*** reading blockchain")
-    print(un_ser_shit(f_txt))
+    #  print(un_ser_shit(f_txt))
     return un_ser_shit(f_txt)
 
 
@@ -642,7 +573,7 @@ def un_ser_shit(heretic_list):
         if type(i) == list or type(i) == tuple:
             new_list.append(un_ser_shit(i))
         if type(i) == str and i[0] == 'b':
-            print("line 634 :%s" % i)
+            # print("line 634 :%s" % i)
             new_list.append(make_debug_shit_bytes_fixed(i))
         if type(i) == str and i.isdigit():
             new_list.append(int(i))
@@ -848,12 +779,14 @@ def init_block_download(s, agreed_version):
                     print("765")
                     return False
                 try:
+                    print("851")
                     block_tuple = parse_block_msg(msg_tuple[4])
                 except Exception as e:
                     print("770")
                     print(e)
                     return False
                 if validate_block(block_tuple):
+                    print("---------------------------------block----------------------------")
                     print("saving block")
                     b1 = Block(block_tuple[0], block_tuple[1], block_tuple[2], block_tuple[3], block_tuple[4],
                                block_tuple[5], block_tuple[7], block_tuple[6])
@@ -943,7 +876,8 @@ def search_tx_by_hash_in_blockchain(hsh):
     blockchain = blockchain_handle_read()
     for i in blockchain:
         for j in i[6]:
-            if j[5] == hsh:
+            print("--------------------------------searching tx----------------------------------")
+            if j[4] == hsh:
                 return j
     return None
 
@@ -996,9 +930,6 @@ def make_debug_shit_bytes(stri, num_of_bytes):
 
 
 def make_debug_shit_bytes_fixed(stri):
-    print("------------------------")
-    print(stri)
-    print("------------------------")
     starr = stri[2:-1].split(r"\x")
     byti = "0x"
 
@@ -1017,18 +948,18 @@ def make_debug_shit_bytes_fixed(stri):
                 byti += str(hex(ord(i[1])))[2:]
         elif lengthi > 2:
             try:
-                temp = int(i, 16).to_bytes(1, 'big')
-                byti += i
+                temp = int(i[:2], 16).to_bytes(1, 'big')
+                byti += i[:2]
             except Exception as e:
-                print(e)
-                print("1015")
+                #  print(e)
+                #  print("1024")
                 byti += str(hex(ord(i[0])))[2:]
                 byti += str(hex(ord(i[1])))[2:]
             for j in i[2:]:
                 byti += str(hex(ord(j)))[2:]
 
     length = (len(byti)-2)/2
-    print(byti)
+    #  print(byti)
     return int(byti, 16).to_bytes(int(length), 'big')
 
 
@@ -1049,9 +980,60 @@ def waiting_for_inv(s, msg_tuple):
         print(e)
         print("1018")
 
-# -----------------------------------------------------random_shit---------------------------------------------------- #
-# inferkit
 
+def get_diff(num):
+    num = str(hex(num))
+    return int("0x" + num[4:], 16) * 2 ** (8 * (int(num[:4], 16) - 3))
+
+# -----------------------------------------------------random_shit---------------------------------------------------- #
+# --------------------------------------------------------wallet------------------------------------------------------ #
+# not tested due to lack of funds
+
+def create_outpoint(hsh, index):
+    return struct.pack("<32s", hsh) + struct.pack("<L", index)
+
+
+def create_input(hsh, index):
+    return create_outpoint(hsh, index) + create_var_int(bitcoin.sign(hsh, index, my_priv)) +struct.pack("<"+str(len(bitcoin.sign(hsh, index, my_priv)))+"s", bitcoin.sign(hsh, index, my_priv)) + struct.pack("xxxx")
+
+
+def create_output(val, pk_script):
+    return struct.pack("<Q", val) + create_var_int(pk_script) + struct.pack("<"+str(len(pk_script))+"s", pk_script)
+
+
+def search_my_txout(amount):
+    txouts = []
+    txouts_amount = 0
+    my_blockchain = blockchain_handle_read()
+    for i in my_blockchain:
+        for j in i[6]:
+            for h in j[1]:
+                index = 0
+                if (not h[2]) and h[1] == my_pub:
+                    txouts_amount += h[0]
+                    txouts.append([j[5], index])
+                    if txouts_amount > amount:
+                        break
+                index += 1
+    return txouts, txouts_amount
+
+
+def create_tx(fee, send_to):
+    amount = 0
+    for i in send_to:
+        amount += i[0]
+    txouts, txouts_amount = search_my_txout(amount + fee)
+    if len(txouts) == 0:
+        return False
+    send_to.append([txouts_amount-amount-fee, my_pub])
+    msg = struct.pack("<L", my_version) + create_var_int(txouts)
+    for i in txouts:
+        msg += create_input(i[0], i[1])
+    msg += create_var_int(send_to)
+    for i in send_to:
+        msg += create_output(i[0], i[1])
+    return msg + struct.pack("xxxx")
+# --------------------------------------------------------wallet------------------------------------------------------ #
 
 if __name__ == '__main__':
     # genesis_block = make_debug_shit_bytes("01 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00 00 00 00 00 3B A3 ED FD  7A 7B 12 B2 7A C7 2C 3E 67 76 8F 61 7F C8 1B C3  88 8A 51 32 3A 9F B8 AA", 64)
@@ -1072,7 +1054,7 @@ if __name__ == '__main__':
     # print(add_to_blockchain())
     # print(add_block_to_tree((0, 1, 0, 0, 0, 0, 21, [])))
     # print(add_to_blockchain())
-    disired_address = "89.138.132.18"
+    disired_address = "87.68.182.216"
 
     blockchain_handle_write([])
     print(convert_ip_address(disired_address))

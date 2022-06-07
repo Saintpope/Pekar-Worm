@@ -8,6 +8,7 @@ import requests as req
 my_address = "3EuJcabTdjEiMpdtxPtDUeVt6RUdqVGTzB"
 now = time.time()
 
+mercaz = ["mfgkdsgkjhfg", 14, b'ARFJNLKJH', 'l', 68]
 
 def make_debug_shit_bytes_fixed(stri):
     starr = stri[2:-1].split(r"\x")
@@ -27,16 +28,23 @@ def make_debug_shit_bytes_fixed(stri):
     return int(byti, 16).to_bytes(int(length), 'big')
 
 
+def only_int_is_gud(lst):
+    new_lst = []
+    for i in lst:
+        if type(i) == int:
+            new_lst.append(i)
+    return new_lst
+
+
+def get_diff(num):
+    num = str(hex(num))
+    return int("0x" + num[4:], 16) * 2 ** (8 * (int(num[:4], 16) - 3))
+
+
+def rec(n):
+    if n==1:
+        return 1
+    return n*rec(n-1)
+
 if __name__ == '__main__':
-    HOST = "127.0.0.1"  # Standard loopback interface address (localhost)
-    PORT = 65432  # Port to listen on (non-privileged ports are > 1023)
-
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind((HOST, PORT))
-        s.listen()
-        conn, addr = s.accept()
-        with conn:
-            print(f"Connected by {addr}")
-            print(digital_wallet.version_handshake(conn, digital_wallet.convert_ip_address(HOST), 65432))
-            print("done")
-
+    print(rec(4))
